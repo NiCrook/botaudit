@@ -1,5 +1,9 @@
 # botaudit
 
+[![PyPI](https://img.shields.io/pypi/v/botaudit)](https://pypi.org/project/botaudit/)
+[![Python](https://img.shields.io/pypi/pyversions/botaudit)](https://pypi.org/project/botaudit/)
+[![License](https://img.shields.io/badge/license-CC%20BY--NC%204.0-blue)](LICENSE.md)
+
 CLI tool that grades how accessible a website is to AI clients.
 
 botaudit fetches a webpage, analyzes its HTML structure, and scores it across six categories that affect how well AI crawlers and language models can discover and consume its content. The output is a letter-graded report with per-category scores and actionable recommendations.
@@ -9,7 +13,7 @@ botaudit fetches a webpage, analyzes its HTML structure, and scores it across si
 Requires Python 3.11+.
 
 ```bash
-pip install .
+pip install botaudit
 ```
 
 ## Usage
