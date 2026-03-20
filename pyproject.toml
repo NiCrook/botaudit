@@ -1,0 +1,19 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "botaudit"
+version = "0.1.0"
+description = "CLI tool that grades how accessible a website is to AI clients"
+requires-python = ">=3.11"
+dependencies = [
+    "httpx",
+    "beautifulsoup4",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/botaudit"]
+
+[project.scripts]
+botaudit = "botaudit.cli:main"
