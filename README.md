@@ -30,6 +30,14 @@ botaudit https://example.com
 | `--format {text,json,csv}` | Output format (default: text) |
 | `--no-recommendations` | Suppress improvement recommendations |
 | `--skip-llm-discovery` | Skip LLM discoverability analysis (no robots.txt/llms.txt fetches) |
+| `--fail-under GRADE` | Exit with code 1 if grade is below GRADE (A, B, C, D, or F) |
+
+### CI usage
+
+```bash
+# Fail the build if the site scores below a B
+botaudit https://staging.myapp.com --fail-under B --format json
+```
 
 ### Example output
 

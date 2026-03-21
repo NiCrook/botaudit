@@ -57,6 +57,13 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="Output format (default: text)",
     )
+    parser.add_argument(
+        "--fail-under",
+        choices=["A", "B", "C", "D", "F"],
+        default=None,
+        metavar="GRADE",
+        help="Exit with code 1 if overall grade is below GRADE (e.g. --fail-under B)",
+    )
     return parser
 
 
@@ -104,6 +111,12 @@ def main(argv: list[str] | None = None) -> None:
         print(format_csv(report, show_recommendations=show_recs))
     else:
         print_report(report, show_recommendations=show_recs)
+
+    if args.fail_under is not None:
+        from botaudit.models import GRADE_THRESHOLDS
+        grade_order = {letter: score for score, letter in GRADE_THRESHOLDS}
+        if grade_order[report.grade] < grade_order[args.fail_under]:
+            sys.exit(1)
 
 
 if __name__ == "__main__":
