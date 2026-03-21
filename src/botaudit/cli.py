@@ -50,6 +50,13 @@ def build_parser() -> argparse.ArgumentParser:
         default=False,
         help="Skip LLM discoverability analysis (no robots.txt/llms.txt fetches)",
     )
+    parser.add_argument(
+        "--format",
+        choices=["text", "json", "csv"],
+        default="text",
+        dest="output_format",
+        help="Output format (default: text)",
+    )
     return parser
 
 
@@ -88,7 +95,15 @@ def main(argv: list[str] | None = None) -> None:
     show_recs = not args.no_recommendations
     if show_recs:
         report.categories = recommend(analysis, report.categories)
-    print_report(report, show_recommendations=show_recs)
+
+    if args.output_format == "json":
+        from botaudit.report import format_json
+        print(format_json(report, show_recommendations=show_recs))
+    elif args.output_format == "csv":
+        from botaudit.report import format_csv
+        print(format_csv(report, show_recommendations=show_recs))
+    else:
+        print_report(report, show_recommendations=show_recs)
 
 
 if __name__ == "__main__":

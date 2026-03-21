@@ -27,6 +27,7 @@ botaudit https://example.com
 | Flag | Description |
 |---|---|
 | `--timeout SECONDS` | HTTP request timeout (default: 10) |
+| `--format {text,json,csv}` | Output format (default: text) |
 | `--no-recommendations` | Suppress improvement recommendations |
 | `--skip-llm-discovery` | Skip LLM discoverability analysis (no robots.txt/llms.txt fetches) |
 
@@ -98,6 +99,6 @@ src/botaudit/
   llm_discoverability.py LLM discovery file fetching and analysis
   grading.py             Per-category scoring and overall grading
   recommendations.py     Per-category recommendation generation
-  report.py              Plain-text report formatting
+  report.py              Report formatting (text, JSON, CSV)
   models.py              Shared data structures and constants
 ```
