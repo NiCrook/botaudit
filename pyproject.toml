@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "botaudit"
-version = "1.1.0"
+version = "1.2.0"
 description = "CLI tool that grades how accessible a website is to AI clients"
 readme = "README.md"
 license = "CC-BY-NC-4.0"
