@@ -1,13 +1,19 @@
-"""LLM Discoverability — analysis of robots.txt, llms.txt, llms-full.txt.
+"""LLM Discoverability — analysis of robots.txt, llms.txt, llms-full.txt,
+ai.txt, ai-plugin.json, agent.json.
 
 FR-1   Fetching of robots.txt, llms.txt, llms-full.txt
 FR-3   llms.txt structural validation
 FR-4   llms.txt content quality assessment
 FR-5   llms-full.txt detection
+SPEC-ai-metadata FR-1  Fetching of ai.txt, ai-plugin.json, agent.json
+SPEC-ai-metadata FR-2  ai.txt analysis
+SPEC-ai-metadata FR-3  ai-plugin.json analysis
+SPEC-ai-metadata FR-4  agent.json analysis
 """
 
 from __future__ import annotations
 
+import json
 import re
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -15,7 +21,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from botaudit.fetcher import DEFAULT_TIMEOUT, MAX_REDIRECTS, USER_AGENT
+from botaudit.fetcher import DEFAULT_TIMEOUT, MAX_REDIRECTS, USER_AGENT, get_ssl_context
 from botaudit.robots_analysis import RobotsTxtResult, analyze_robots_txt
 
 # ---------------------------------------------------------------------------
@@ -64,6 +70,59 @@ class LlmsFullTxtResult:
 
 
 # ---------------------------------------------------------------------------
+# SPEC-ai-metadata FR-3.2 — Required fields for ai-plugin.json validation
+# ---------------------------------------------------------------------------
+
+AI_PLUGIN_REQUIRED_FIELDS: tuple[str, ...] = (
+    "schema_version",
+    "name_for_human",
+    "name_for_model",
+    "description_for_human",
+    "description_for_model",
+)
+
+
+# ---------------------------------------------------------------------------
+# SPEC-ai-metadata FR-10.1 — AI metadata result dataclasses
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class AiTxtResult:
+    """SPEC-ai-metadata FR-2 — ai.txt detection result."""
+
+    present: bool = False
+    line_count: int = 0  # FR-2.4: approximate size
+
+
+@dataclass
+class AiPluginJsonResult:
+    """SPEC-ai-metadata FR-3 — /.well-known/ai-plugin.json analysis result."""
+
+    present: bool = False
+    valid: bool = False  # FR-3.3: all required fields present and non-empty
+    name_for_human: str = ""  # FR-3.2
+    name_for_model: str = ""  # FR-3.2
+    has_api: bool = False  # FR-3.4: api.type and api.url both present
+
+
+@dataclass
+class AgentJsonResult:
+    """SPEC-ai-metadata FR-4 — /.well-known/agent.json detection result."""
+
+    present: bool = False  # FR-4.2: non-empty JSON object
+
+
+@dataclass
+class AIMetadataResult:
+    """SPEC-ai-metadata FR-10.1 — Combined AI metadata detection results."""
+
+    ai_txt: AiTxtResult = field(default_factory=AiTxtResult)
+    ai_plugin_json: AiPluginJsonResult = field(default_factory=AiPluginJsonResult)
+    agent_json: AgentJsonResult = field(default_factory=AgentJsonResult)
+
+
+# ---------------------------------------------------------------------------
 # Combined result
 # ---------------------------------------------------------------------------
 
@@ -75,6 +134,8 @@ class LLMDiscoverabilityResult:
     robots: RobotsTxtResult = field(default_factory=RobotsTxtResult)
     llms_txt: LlmsTxtResult = field(default_factory=LlmsTxtResult)
     llms_full_txt: LlmsFullTxtResult = field(default_factory=LlmsFullTxtResult)
+    # SPEC-ai-metadata FR-10.2 / FR-10.3: defaults to all-absent
+    ai_metadata: AIMetadataResult = field(default_factory=AIMetadataResult)
 
 
 # ---------------------------------------------------------------------------
@@ -93,6 +154,16 @@ def _is_text_content_type(content_type: str) -> bool:
     if not content_type:
         return False
     media_type = content_type.split(";")[0].strip().lower()
+    return media_type.startswith("text/") and media_type != "text/html"
+
+
+def _is_json_content_type(content_type: str) -> bool:
+    """SPEC-ai-metadata FR-1.7 — Accept application/json or text/* (not text/html)."""
+    if not content_type:
+        return False
+    media_type = content_type.split(";")[0].strip().lower()
+    if media_type == "application/json":
+        return True
     return media_type.startswith("text/") and media_type != "text/html"
 
 
@@ -118,22 +189,62 @@ def _fetch_text_file(client: httpx.Client, url: str) -> str | None:
     return response.text
 
 
+def _fetch_json_file(client: httpx.Client, url: str) -> str | None:
+    """SPEC-ai-metadata FR-1.7 — Fetch a JSON file, returning content or None.
+
+    FR-1.4: Non-2xx responses → None.
+    FR-1.5: Network errors → None.
+    FR-1.7: Non-JSON/text Content-Type → None (HTML rejected).
+    """
+    try:
+        response = client.get(url)
+    except httpx.HTTPError:
+        return None
+
+    if not response.is_success:
+        return None
+
+    content_type = response.headers.get("content-type", "")
+    if not _is_json_content_type(content_type):
+        return None
+
+    return response.text
+
+
 def fetch_discovery_files(
     url: str,
     *,
     timeout: float = DEFAULT_TIMEOUT,
-) -> tuple[str | None, str | None, str | None]:
-    """FR-1 — Fetch robots.txt, llms.txt, llms-full.txt from the origin.
+) -> tuple[str | None, str | None, str | None, str | None, str | None, str | None]:
+    """FR-1 / SPEC-ai-metadata FR-1 — Fetch all discovery files from the origin.
 
-    FR-1.2: Separate HTTP GET requests, independent of primary fetch.
-    FR-1.3: Same User-Agent, timeout, redirect settings as primary fetch.
-    NFR-1.1: Three fetches performed concurrently.
+    Returns ``(robots_txt, llms_txt, llms_full_txt,
+               ai_txt, ai_plugin_json, agent_json)``
+    — each is either the file content as a string, or ``None`` if not present.
 
-    Returns ``(robots_txt, llms_txt, llms_full_txt)`` — each is either
-    the file content as a string, or ``None`` if not present.
+    SPEC-llms-txt FR-1.2: Separate HTTP GET requests.
+    SPEC-llms-txt FR-1.3: Same User-Agent, timeout, redirect settings.
+    SPEC-ai-metadata FR-1.2: New fetches independent of existing ones.
+    SPEC-ai-metadata FR-1.8 / NFR-1.1: All six fetches performed concurrently.
     """
     origin = _get_origin(url)
-    paths = ["/robots.txt", "/llms.txt", "/llms-full.txt"]
+
+    # (path, fetcher) pairs — text files use _fetch_text_file,
+    # JSON files use _fetch_json_file (SPEC-ai-metadata FR-1.6 / FR-1.7)
+    jobs: list[tuple[str, bool]] = [
+        ("/robots.txt", False),           # text
+        ("/llms.txt", False),             # text
+        ("/llms-full.txt", False),        # text
+        ("/ai.txt", False),               # SPEC-ai-metadata FR-1.6: text
+        ("/.well-known/ai-plugin.json", True),  # SPEC-ai-metadata FR-1.7: JSON
+        ("/.well-known/agent.json", True),      # SPEC-ai-metadata FR-1.7: JSON
+    ]
+
+    def _do_fetch(item: tuple[str, bool]) -> str | None:
+        path, is_json = item
+        if is_json:
+            return _fetch_json_file(client, origin + path)
+        return _fetch_text_file(client, origin + path)
 
     # FR-1.3 — Reuse same client settings as primary fetch
     with httpx.Client(
@@ -141,14 +252,13 @@ def fetch_discovery_files(
         max_redirects=MAX_REDIRECTS,
         timeout=timeout,
         headers={"User-Agent": USER_AGENT},
+        verify=get_ssl_context(),
     ) as client:
-        # NFR-1.1 — Concurrent fetches
-        with ThreadPoolExecutor(max_workers=3) as pool:
-            results = list(
-                pool.map(lambda p: _fetch_text_file(client, origin + p), paths)
-            )
+        # SPEC-ai-metadata NFR-1.1 — Six concurrent fetches
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            results = list(pool.map(_do_fetch, jobs))
 
-    return results[0], results[1], results[2]
+    return results[0], results[1], results[2], results[3], results[4], results[5]
 
 
 # ---------------------------------------------------------------------------
@@ -273,6 +383,102 @@ def analyze_llms_full_txt(content: str | None) -> LlmsFullTxtResult:
 
 
 # ---------------------------------------------------------------------------
+# SPEC-ai-metadata FR-2  —  ai.txt analysis
+# ---------------------------------------------------------------------------
+
+
+def analyze_ai_txt(content: str | None) -> AiTxtResult:
+    """SPEC-ai-metadata FR-2 — Check ai.txt presence and substantive content.
+
+    FR-2.1: Plain-text file containing AI interaction policies.
+    FR-2.2: Non-empty, >10 characters after trimming whitespace.
+    FR-2.3: No deep structural analysis — presence is sufficient.
+    FR-2.4: Report line count.
+    """
+    result = AiTxtResult()
+    if content is None:
+        return result
+    trimmed = content.strip()
+    if len(trimmed) <= 10:
+        return result
+    result.present = True
+    result.line_count = len(content.splitlines())
+    return result
+
+
+# ---------------------------------------------------------------------------
+# SPEC-ai-metadata FR-3  —  ai-plugin.json analysis
+# ---------------------------------------------------------------------------
+
+
+def analyze_ai_plugin_json(content: str | None) -> AiPluginJsonResult:
+    """SPEC-ai-metadata FR-3 — Parse and validate ai-plugin.json.
+
+    FR-3.1: Parse as JSON; treat parse failure as "not present."
+    FR-3.2: Validate required fields (AI_PLUGIN_REQUIRED_FIELDS).
+    FR-3.3: Structurally valid when all required fields are non-empty strings.
+    FR-3.4: Check for api.type and api.url sub-fields when api is present.
+    FR-3.5: Do NOT fetch or validate referenced URLs.
+    """
+    result = AiPluginJsonResult()
+    if content is None:
+        return result
+    try:
+        data = json.loads(content)
+    except (json.JSONDecodeError, ValueError):
+        return result
+    if not isinstance(data, dict):
+        return result
+
+    result.present = True
+
+    # FR-3.3 — valid when all required fields are non-empty strings
+    all_valid = True
+    for field_name in AI_PLUGIN_REQUIRED_FIELDS:
+        value = data.get(field_name)
+        if not isinstance(value, str) or not value.strip():
+            all_valid = False
+            break
+    result.valid = all_valid
+
+    if result.valid:
+        result.name_for_human = data["name_for_human"]
+        result.name_for_model = data["name_for_model"]
+
+    # FR-3.4 — check api sub-fields
+    api = data.get("api")
+    if isinstance(api, dict):
+        result.has_api = bool(api.get("type")) and bool(api.get("url"))
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# SPEC-ai-metadata FR-4  —  agent.json analysis
+# ---------------------------------------------------------------------------
+
+
+def analyze_agent_json(content: str | None) -> AgentJsonResult:
+    """SPEC-ai-metadata FR-4 — Parse and validate agent.json.
+
+    FR-4.1: Parse as JSON; treat parse failure as "not present."
+    FR-4.2: Non-empty object (not {}).
+    FR-4.3: No specific schema enforced — presence of non-empty object suffices.
+    FR-4.4: MAY report top-level keys in findings (handled by scorer).
+    """
+    result = AgentJsonResult()
+    if content is None:
+        return result
+    try:
+        data = json.loads(content)
+    except (json.JSONDecodeError, ValueError):
+        return result
+    if isinstance(data, dict) and len(data) > 0:
+        result.present = True
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Orchestrator
 # ---------------------------------------------------------------------------
 
@@ -281,10 +487,23 @@ def analyze_llm_discovery(
     robots_txt: str | None,
     llms_txt: str | None,
     llms_full_txt: str | None,
+    *,
+    ai_txt: str | None = None,
+    ai_plugin_json: str | None = None,
+    agent_json: str | None = None,
 ) -> LLMDiscoverabilityResult:
-    """Run all LLM Discoverability analyses and return combined result."""
+    """Run all LLM Discoverability analyses and return combined result.
+
+    SPEC-ai-metadata NFR-3.3: New kwargs default to None for backward compat.
+    """
     return LLMDiscoverabilityResult(
         robots=analyze_robots_txt(robots_txt),
         llms_txt=analyze_llms_txt(llms_txt),
         llms_full_txt=analyze_llms_full_txt(llms_full_txt),
+        # SPEC-ai-metadata FR-10.2
+        ai_metadata=AIMetadataResult(
+            ai_txt=analyze_ai_txt(ai_txt),
+            ai_plugin_json=analyze_ai_plugin_json(ai_plugin_json),
+            agent_json=analyze_agent_json(agent_json),
+        ),
     )

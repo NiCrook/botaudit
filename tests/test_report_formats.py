@@ -97,4 +97,4 @@ class TestFormatCsv(unittest.TestCase):
         next(reader)  # skip header
         row = next(reader)
         self.assertEqual(row[0], "https://example.com")
-        self.assertEqual(row[3], "Content Availability")
+        self.assertEqual(row[4], "Content Availability")

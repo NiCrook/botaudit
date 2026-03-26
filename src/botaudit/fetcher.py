@@ -4,11 +4,36 @@ Performs a raw HTTP GET — no JavaScript execution — and returns the
 response body as a string, or raises FetchError on any failure.
 """
 
+import ssl
+
 import httpx
 
 USER_AGENT = "botaudit/0.1.0 (+https://github.com/botaudit)"
 DEFAULT_TIMEOUT = 10.0
 MAX_REDIRECTS = 10
+
+_ssl_context = None
+
+
+def get_ssl_context() -> ssl.SSLContext | bool:
+    """Return an SSL context that uses the OS trust store when available.
+
+    Tries ``truststore`` first (uses the OS certificate store), falling
+    back to httpx's default behaviour (certifi bundle) if truststore is
+    not installed.  The result is cached for the lifetime of the process.
+    """
+    global _ssl_context
+    if _ssl_context is not None:
+        return _ssl_context
+    try:
+        import truststore          # type: ignore[import-untyped]
+
+        ctx = truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        _ssl_context = ctx
+    except ImportError:
+        # truststore not available — let httpx use its default (certifi)
+        _ssl_context = True
+    return _ssl_context
 
 
 class FetchError(Exception):
@@ -29,6 +54,7 @@ def fetch(url: str, *, timeout: float = DEFAULT_TIMEOUT) -> str:
             max_redirects=MAX_REDIRECTS,
             timeout=timeout,
             headers={"User-Agent": USER_AGENT},
+            verify=get_ssl_context(),
         ) as client:
             response = client.get(url)
     except httpx.TimeoutException:

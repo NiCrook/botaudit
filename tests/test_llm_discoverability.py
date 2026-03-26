@@ -210,7 +210,7 @@ class TestScoreLlmDiscovery(unittest.TestCase):
             llms_full_txt=llms_full or LlmsFullTxtResult(),
         )
 
-    # FR-6.6 — Baseline: no files = 30
+    # FR-6.6 / SPEC-ai-metadata FR-5.9 — Baseline: no files = 30
     def test_no_files_scores_30(self):
         result = analyze_llm_discovery(None, None, None)
         cat = score_llm_discovery(result)
@@ -250,7 +250,7 @@ class TestScoreLlmDiscovery(unittest.TestCase):
         self.assertEqual(cat.score, 0)
 
     def test_restrictive_cap_at_65(self):
-        """FR-6.3 — Max score with restrictive is <=65."""
+        """FR-6.3 / SPEC-ai-metadata FR-5.8 — Max score with restrictive is <=65."""
         llms = LlmsTxtResult(
             present=True,
             is_valid=True,
@@ -323,8 +323,8 @@ class TestScoreLlmDiscovery(unittest.TestCase):
             llms_full=LlmsFullTxtResult(present=True),
         )
         cat = score_llm_discovery(result)
-        # 30 + 20 + 5 + 5 + 10 + 5 + 10 + 5 = 90
-        self.assertEqual(cat.score, 90)
+        # SPEC-ai-metadata FR-5.2: 30 + 15 + 5 + 5 + 5 + 5 + 5 + 5 = 75
+        self.assertEqual(cat.score, 75)
 
     # FR-6.4 — No llms.txt sub-signals without llms.txt
     def test_no_llms_txt_no_subsignals(self):
@@ -496,21 +496,33 @@ class TestRecommendLlmDiscovery(unittest.TestCase):
         recs = recommend_llm_discovery(result)
         self.assertFalse(any("sitemap" in r.message.lower() for r in recs))
 
-    # Open site with full llms.txt — minimal recs
+    # Open site with full llms.txt + AI metadata — no recs
     def test_well_configured_site_few_recs(self):
-        result = self._make_result(
+        from botaudit.llm_discoverability import (
+            AIMetadataResult,
+            AgentJsonResult,
+            AiPluginJsonResult,
+            AiTxtResult,
+        )
+
+        result = LLMDiscoverabilityResult(
             robots=RobotsTxtResult(
                 present=True,
                 classification="open",
                 has_sitemap=True,
             ),
-            llms=LlmsTxtResult(
+            llms_txt=LlmsTxtResult(
                 present=True,
                 summary_substantive=True,
                 resource_link_count=5,
                 has_md_links=True,
             ),
-            llms_full=LlmsFullTxtResult(present=True),
+            llms_full_txt=LlmsFullTxtResult(present=True),
+            ai_metadata=AIMetadataResult(
+                ai_txt=AiTxtResult(present=True, line_count=5),
+                ai_plugin_json=AiPluginJsonResult(present=True, valid=True, name_for_human="X"),
+                agent_json=AgentJsonResult(present=True),
+            ),
         )
         recs = recommend_llm_discovery(result)
         self.assertEqual(len(recs), 0)

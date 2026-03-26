@@ -8,5 +8,5 @@ build/
 # Virtual environment
 .venv/
 
-# Docs
-docs/
+# Claude Code
+.claude/
