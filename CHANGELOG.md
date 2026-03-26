@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- HTTPS connections failing on systems where certifi's CA bundle is incomplete (e.g., Python 3.14 on Windows); `truststore` now provides OS-native certificate verification with automatic fallback to certifi
+
 ### Added
 - Batch URL scanning: audit multiple URLs in one invocation via positional args or `--file`/`-f` flag
 - URL file format with comments (`#`), blank line handling, and UTF-8 BOM support

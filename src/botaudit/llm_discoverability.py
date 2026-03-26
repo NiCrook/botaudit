@@ -21,7 +21,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from botaudit.fetcher import DEFAULT_TIMEOUT, MAX_REDIRECTS, USER_AGENT
+from botaudit.fetcher import DEFAULT_TIMEOUT, MAX_REDIRECTS, USER_AGENT, get_ssl_context
 from botaudit.robots_analysis import RobotsTxtResult, analyze_robots_txt
 
 # ---------------------------------------------------------------------------
@@ -252,6 +252,7 @@ def fetch_discovery_files(
         max_redirects=MAX_REDIRECTS,
         timeout=timeout,
         headers={"User-Agent": USER_AGENT},
+        verify=get_ssl_context(),
     ) as client:
         # SPEC-ai-metadata NFR-1.1 — Six concurrent fetches
         with ThreadPoolExecutor(max_workers=6) as pool:

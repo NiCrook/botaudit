@@ -28,6 +28,7 @@ dependencies = [
     "httpx",
     "beautifulsoup4",
     "pyyaml",
+    "truststore",
 ]
 
 [project.urls]
