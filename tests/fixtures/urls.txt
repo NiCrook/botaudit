@@ -1,0 +1,10 @@
+# Test batch file for --file flag
+# FR-2.1: One URL per line
+# FR-2.2: Blank lines ignored
+# FR-2.3: Comments ignored
+
+https://httpbin.org
+https://nonexistent.invalid
+
+# Duplicate — should be deduplicated (FR-3.1)
+https://httpbin.org
