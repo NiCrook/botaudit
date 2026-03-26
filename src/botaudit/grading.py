@@ -198,26 +198,31 @@ def score_metadata(result: MetadataResult) -> CategoryResult:
 
 
 def score_llm_discovery(result: LLMDiscoverabilityResult) -> CategoryResult:
-    """FR-6 — Score the LLM Discoverability category (0–100).
+    """FR-6 / SPEC-ai-metadata FR-5 — Score the LLM Discoverability category (0–100).
 
-    Scoring breakdown (FR-6.2):
+    Revised scoring breakdown (SPEC-ai-metadata FR-5.2):
       AI crawlers not blocked          30 pts
       Explicit Allow for AI bots        5 pts
       Sitemap in robots.txt             5 pts
-      llms.txt present                 20 pts
+      llms.txt present                 15 pts  (was 20)
       llms.txt valid structure          5 pts
       llms.txt summary present          5 pts
-      llms.txt resource links          10 pts
+      llms.txt resource links           5 pts  (was 10)
       llms.txt markdown resources       5 pts
-      llms-full.txt present            10 pts
-      botaudit not blocked                5 pts
+      llms-full.txt present             5 pts  (was 10)
+      botaudit not blocked              5 pts
+      ai.txt present                    5 pts  NEW (SPEC-ai-metadata)
+      AI metadata manifest present      5 pts  NEW (SPEC-ai-metadata)
+      AI metadata manifest valid        5 pts  NEW (SPEC-ai-metadata)
                                      --------
                                       100 pts
 
-    FR-6.3: When restrictive, AI crawlers (30) and botaudit (5) score 0.
+    FR-6.3 / SPEC-ai-metadata FR-5.8: When restrictive, AI crawlers (30) and
+        botaudit (5) score 0 — max 65.
     FR-6.4: No llms.txt sub-signals without llms.txt present.
     FR-6.5: No llms-full.txt credit without llms.txt present.
-    FR-6.6: No robots.txt + no llms.txt = 30 (baseline).
+    SPEC-ai-metadata FR-5.7: ai.txt/manifest signals independent of llms.txt.
+    SPEC-ai-metadata FR-5.9: No robots.txt + no discovery files = 30 (baseline).
     """
     findings: list[str] = []
     score = 0.0
@@ -225,9 +230,10 @@ def score_llm_discovery(result: LLMDiscoverabilityResult) -> CategoryResult:
     robots = result.robots
     llms = result.llms_txt
     llms_full = result.llms_full_txt
+    ai_meta = result.ai_metadata
 
     # --- Signal 1: AI crawlers not blocked (30 pts) ---
-    # FR-6.3: Scores 0 when restrictive
+    # FR-6.3 / SPEC-ai-metadata FR-5.8: Scores 0 when restrictive
     if robots.classification in ("open", "partial"):
         score += 30
         if not robots.present:
@@ -256,9 +262,10 @@ def score_llm_discovery(result: LLMDiscoverabilityResult) -> CategoryResult:
         score += 5
         findings.append("Sitemap directive found in robots.txt.")
 
-    # --- Signal 4: llms.txt present (20 pts) ---
+    # --- Signal 4: llms.txt present (15 pts) ---
+    # SPEC-ai-metadata FR-5.2: reduced from 20 to 15
     if llms.present:
-        score += 20
+        score += 15
         if llms.h1_text:
             findings.append(f'llms.txt present (title: "{llms.h1_text}").')
         else:
@@ -276,9 +283,10 @@ def score_llm_discovery(result: LLMDiscoverabilityResult) -> CategoryResult:
         elif llms.has_blockquote:
             findings.append("Summary present but not substantive (<=5 words).")
 
-        # --- Signal 7: Resource links (10 pts) ---
+        # --- Signal 7: Resource links (5 pts) ---
+        # SPEC-ai-metadata FR-5.2: reduced from 10 to 5
         if llms.resource_link_count > 0 and llms.h2_count > 0:
-            score += 10
+            score += 5
             findings.append(
                 f"{llms.resource_link_count} resource link(s) across "
                 f"{llms.h2_count} section(s)."
@@ -291,10 +299,11 @@ def score_llm_discovery(result: LLMDiscoverabilityResult) -> CategoryResult:
             score += 5
             findings.append("Resource links to .md files found.")
 
-        # --- Signal 9: llms-full.txt present (10 pts) ---
+        # --- Signal 9: llms-full.txt present (5 pts) ---
+        # SPEC-ai-metadata FR-5.2: reduced from 10 to 5
         # FR-5.4 / FR-6.5: Only scored when llms.txt is also present
         if llms_full.present:
-            score += 10
+            score += 5
             findings.append("llms-full.txt present.")
         else:
             findings.append("No llms-full.txt found.")
@@ -303,12 +312,52 @@ def score_llm_discovery(result: LLMDiscoverabilityResult) -> CategoryResult:
         # FR-6.4/6.5: No sub-signal credit without llms.txt
 
     # --- Signal 10: botaudit not blocked (5 pts) ---
-    # FR-6.3: Scores 0 when restrictive
-    # Only awarded when robots.txt is present and tool is not blocked
+    # FR-6.3 / SPEC-ai-metadata FR-5.8: Scores 0 when restrictive
     if robots.present and robots.classification != "restrictive" and robots.tool_allowed:
         score += 5
     elif robots.present and not robots.tool_allowed:
         findings.append("robots.txt blocks the botaudit user-agent.")
+
+    # --- Signal 11: ai.txt present (5 pts) ---
+    # SPEC-ai-metadata FR-5.7: independent of llms.txt
+    if ai_meta.ai_txt.present:
+        score += 5
+        # FR-6.1
+        findings.append(f"ai.txt present ({ai_meta.ai_txt.line_count} lines).")
+    else:
+        # FR-6.2
+        findings.append("No ai.txt file found.")
+
+    # --- Signal 12: AI metadata manifest present (5 pts) ---
+    # SPEC-ai-metadata FR-5.3: at least one of ai-plugin.json or agent.json
+    plugin = ai_meta.ai_plugin_json
+    agent = ai_meta.agent_json
+    manifest_present = plugin.present or agent.present
+    if manifest_present:
+        score += 5
+
+    # FR-6.3 / FR-6.4 / FR-6.5 — ai-plugin.json findings
+    if plugin.present and plugin.valid:
+        findings.append(
+            f'ai-plugin.json present — valid plugin manifest '
+            f'(name: "{plugin.name_for_human}").'
+        )
+    elif plugin.present:
+        findings.append("ai-plugin.json present but missing required fields.")
+    else:
+        findings.append("No ai-plugin.json found.")
+
+    # FR-6.6 / FR-6.7 — agent.json findings
+    if agent.present:
+        findings.append("agent.json present.")
+    else:
+        findings.append("No agent.json found.")
+
+    # --- Signal 13: AI metadata manifest valid (5 pts) ---
+    # SPEC-ai-metadata FR-5.4: ai-plugin.json valid OR agent.json present (non-empty)
+    manifest_valid = plugin.valid or agent.present
+    if manifest_valid:
+        score += 5
 
     return CategoryResult(
         name="LLM Discoverability",

@@ -155,11 +155,14 @@ def _run_single(args: argparse.Namespace) -> None:
             fetch_discovery_files,
         )
 
-        robots_txt, llms_txt, llms_full_txt = fetch_discovery_files(
-            url, timeout=args.timeout
+        robots_txt, llms_txt, llms_full_txt, ai_txt, ai_plugin_json, agent_json = (
+            fetch_discovery_files(url, timeout=args.timeout)
         )
         analysis.llm_discovery = analyze_llm_discovery(
-            robots_txt, llms_txt, llms_full_txt
+            robots_txt, llms_txt, llms_full_txt,
+            ai_txt=ai_txt,
+            ai_plugin_json=ai_plugin_json,
+            agent_json=agent_json,
         )
 
     report = grade(analysis, url, weights=args.weights)
