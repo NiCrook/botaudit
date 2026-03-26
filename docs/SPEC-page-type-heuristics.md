@@ -85,7 +85,7 @@ The tool SHALL match the URL path against common patterns:
 
 | Pattern (case-insensitive) | Detected Type | Vote Weight |
 |---------------------------|---------------|-------------|
-| Path is exactly `/` or `/index.html` | `homepage` | 2.0 |
+| Path is exactly `/` or `/index.html` | `homepage` | 3.0 |
 | Path contains `/blog/`, `/post/`, `/news/`, `/article/` | `article` | 1.5 |
 | Path contains `/product/`, `/item/`, `/shop/`, `/store/` | `product` | 1.5 |
 | Path contains `/docs/`, `/documentation/`, `/guide/`, `/tutorial/`, `/reference/`, `/api/` | `documentation` | 1.5 |

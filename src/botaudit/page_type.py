@@ -175,7 +175,7 @@ def detect_page_type(
     parsed = urlparse(url)
     path = parsed.path.lower()
     if path in ("", "/", "/index.html", "/index.htm"):
-        _add_vote(votes, signals, "url_path", "homepage", 2.0, "/")
+        _add_vote(votes, signals, "url_path", "homepage", 3.0, "/")
     else:
         for substrings, pt, w in URL_PATH_PATTERNS:
             matched_sub = next((s for s in substrings if s in path), None)

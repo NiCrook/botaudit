@@ -224,7 +224,7 @@ class TestDetectHomepage(unittest.TestCase):
             json_ld_blocks=[_make_jsonld_block("WebSite")],
         )
         result = detect_page_type(_make_analysis(structured_data=sd), "https://example.com/")
-        # WebSite (1.5) + root URL (2.0) = 3.5 → homepage
+        # WebSite (1.5) + root URL (3.0) = 4.5 → homepage
         self.assertEqual(result.page_type, "homepage")
 
     def test_root_url_alone(self):
