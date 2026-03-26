@@ -20,8 +20,14 @@ SEPARATOR = "=" * 50
 THIN_SEP = "-" * 50
 
 
-def format_report(report: Report, *, show_recommendations: bool = True) -> str:
+def format_report(
+    report: Report,
+    *,
+    show_recommendations: bool = True,
+    weights: dict[str, float] | None = None,
+) -> str:
     """Return *report* as a formatted plain-text string."""
+    effective = weights if weights is not None else CATEGORY_WEIGHTS
     lines: list[str] = []
 
     # Header
@@ -40,7 +46,7 @@ def format_report(report: Report, *, show_recommendations: bool = True) -> str:
 
     # Category breakdown
     for cat in report.categories:
-        weight = CATEGORY_WEIGHTS.get(cat.name, 0.0)
+        weight = effective.get(cat.name, 0.0)
         weight_pct = f"{weight * 100:.0f}%"
         label = f"{cat.name} ({weight_pct})"
         score_str = f"{cat.score:.0f}/100"
@@ -59,8 +65,14 @@ def format_report(report: Report, *, show_recommendations: bool = True) -> str:
     return "\n".join(lines)
 
 
-def format_json(report: Report, *, show_recommendations: bool = True) -> str:
+def format_json(
+    report: Report,
+    *,
+    show_recommendations: bool = True,
+    weights: dict[str, float] | None = None,
+) -> str:
     """Return *report* as a JSON string."""
+    effective = weights if weights is not None else CATEGORY_WEIGHTS
     data = {
         "url": report.url,
         "overall_score": report.overall_score,
@@ -71,7 +83,7 @@ def format_json(report: Report, *, show_recommendations: bool = True) -> str:
         entry = {
             "name": cat.name,
             "score": cat.score,
-            "weight": CATEGORY_WEIGHTS.get(cat.name, 0.0),
+            "weight": effective.get(cat.name, 0.0),
             "findings": cat.findings,
         }
         if show_recommendations and cat.recommendations:
@@ -83,8 +95,14 @@ def format_json(report: Report, *, show_recommendations: bool = True) -> str:
     return json.dumps(data, indent=2)
 
 
-def format_csv(report: Report, *, show_recommendations: bool = True) -> str:
+def format_csv(
+    report: Report,
+    *,
+    show_recommendations: bool = True,
+    weights: dict[str, float] | None = None,
+) -> str:
     """Return *report* as a CSV string with one row per category."""
+    effective = weights if weights is not None else CATEGORY_WEIGHTS
     buf = io.StringIO()
     writer = csv.writer(buf)
     header = ["url", "overall_score", "grade", "category", "score", "weight", "findings"]
@@ -98,7 +116,7 @@ def format_csv(report: Report, *, show_recommendations: bool = True) -> str:
             report.grade,
             cat.name,
             cat.score,
-            CATEGORY_WEIGHTS.get(cat.name, 0.0),
+            effective.get(cat.name, 0.0),
             "; ".join(cat.findings),
         ]
         if show_recommendations:
@@ -111,9 +129,14 @@ def format_csv(report: Report, *, show_recommendations: bool = True) -> str:
     return buf.getvalue().rstrip()
 
 
-def print_report(report: Report, *, show_recommendations: bool = True) -> None:
+def print_report(
+    report: Report,
+    *,
+    show_recommendations: bool = True,
+    weights: dict[str, float] | None = None,
+) -> None:
     """Format and print *report* to stdout."""
-    print(format_report(report, show_recommendations=show_recommendations))
+    print(format_report(report, show_recommendations=show_recommendations, weights=weights))
 
 
 # ---------------------------------------------------------------------------
@@ -164,9 +187,15 @@ def _render_grade_badge(grade: str, score: float) -> str:
     )
 
 
-def _render_category_card(cat, *, show_recommendations: bool) -> str:
+def _render_category_card(
+    cat,
+    *,
+    show_recommendations: bool,
+    weights: dict[str, float] | None = None,
+) -> str:
     """Render a single category card (FR-2.1)."""
-    weight = CATEGORY_WEIGHTS.get(cat.name, 0.0)
+    effective = weights if weights is not None else CATEGORY_WEIGHTS
+    weight = effective.get(cat.name, 0.0)
     color = _score_color(cat.score)
     lines = [
         f'<section class="category-card">',
@@ -346,7 +375,12 @@ document.addEventListener('DOMContentLoaded',function(){
 """
 
 
-def format_html(report: Report, *, show_recommendations: bool = True) -> str:
+def format_html(
+    report: Report,
+    *,
+    show_recommendations: bool = True,
+    weights: dict[str, float] | None = None,
+) -> str:
     """Return *report* as a self-contained HTML document (SPEC-html-report FR-9.1)."""
     parts: list[str] = []
 
@@ -362,7 +396,7 @@ def format_html(report: Report, *, show_recommendations: bool = True) -> str:
     # Category breakdown (FR-2.1)
     for cat in report.categories:
         parts.append(
-            _render_category_card(cat, show_recommendations=show_recommendations)
+            _render_category_card(cat, show_recommendations=show_recommendations, weights=weights)
         )
 
     # Footer (FR-2.1)
