@@ -34,6 +34,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Crawl metadata display in batch HTML reports when `--crawl` is used
 - XSS prevention via HTML escaping of all user-supplied content
 - Spec document: `docs/SPEC-html-report.md`
+- Custom weight profiles: `--weight-profile` flag with built-in presets (`ecommerce`, `docs`, `ai-ready`)
+- Per-category weight overrides: `--weight`/`-w` flag with decimal or percentage syntax
+- `--list-profiles` flag to display available weight profiles
+- Case-insensitive category aliases for `--weight` (e.g., `structured`, `llm`, `meta`)
+- Spec document: `docs/SPEC-custom-weights.md`
+- AI metadata detection in LLM Discoverability: `ai.txt`, `/.well-known/ai-plugin.json`, `/.well-known/agent.json`
+- Structural validation of `ai-plugin.json` (required fields) and `agent.json` (non-empty object)
+- Revised LLM Discoverability scoring to accommodate new AI metadata signals (100-point budget preserved)
+- Spec document: `docs/SPEC-ai-metadata.md`
+- Deeper Structured Data validation: JSON-LD parsing, `@context`/`@type` verification, schema.org property completeness
+- Open Graph required (4) and recommended (2) property validation
+- Meta description length classification (too short < 50, optimal 50–160, too long > 160)
+- Twitter Card meta tag detection
+- HTML Microdata (`itemscope`) detection
+- Multi-format bonus scoring (15 pts for 2+ structured data formats)
+- Revised Structured Data scoring from binary presence to granular quality signals
+- Spec document: `docs/SPEC-structured-data-validation.md`
 
 ## [1.2.0] - 2026-03-21
 
