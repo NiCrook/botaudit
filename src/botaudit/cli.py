@@ -79,6 +79,29 @@ def build_parser() -> argparse.ArgumentParser:
         default=False,
         help="Suppress progress messages in batch mode",
     )
+
+    # Crawl mode flags (SPEC-crawl)
+    parser.add_argument(
+        "--crawl",
+        type=validate_url,
+        default=None,
+        metavar="URL",
+        help="Target origin for sitemap-based URL discovery",
+    )
+    parser.add_argument(
+        "--crawl-limit",
+        "-l",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Maximum number of crawl-discovered URLs to audit",
+    )
+    parser.add_argument(
+        "--crawl-allow-external",
+        action="store_true",
+        default=False,
+        help="Include URLs from sitemaps that point to other origins",
+    )
     return parser
 
 
@@ -141,7 +164,11 @@ def _run_single(args: argparse.Namespace) -> None:
 # Batch path — FR-1 through FR-10
 # -----------------------------------------------------------------------
 
-def _run_batch(args: argparse.Namespace, urls: list[str]) -> None:
+def _run_batch(
+    args: argparse.Namespace,
+    urls: list[str],
+    crawl_result: object | None = None,
+) -> None:
     """Batch pipeline: multiple URLs via batch module."""
     from botaudit.batch import (
         determine_exit_code,
@@ -162,7 +189,11 @@ def _run_batch(args: argparse.Namespace, urls: list[str]) -> None:
     show_recs = not args.no_recommendations
 
     if args.output_format == "json":
-        print(format_batch_json(batch, show_recommendations=show_recs))
+        print(format_batch_json(
+            batch,
+            show_recommendations=show_recs,
+            crawl_result=crawl_result,
+        ))
     elif args.output_format == "csv":
         print(format_batch_csv(batch, show_recommendations=show_recs))
     else:
@@ -181,20 +212,40 @@ def main(argv: list[str] | None = None) -> None:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    # FR-1.5: need at least one URL from positional or --file
-    if not args.urls and args.file is None:
-        parser.error("the following arguments are required: URL (or --file)")
+    # FR-1.5: need at least one URL from positional, --file, or --crawl
+    if not args.urls and args.file is None and args.crawl is None:
+        parser.error("the following arguments are required: URL (or --file / --crawl)")
 
-    # FR-1.4: collect all URLs (positional + file), validate, deduplicate
+    # NFR-1.2: ignore crawl-specific flags when --crawl not specified
+    crawl_urls: list[str] = []
+    crawl_result = None
+    if args.crawl is not None:
+        from botaudit.crawl import crawl
+        crawl_urls, crawl_result = crawl(
+            args.crawl,
+            timeout=args.timeout,
+            limit=args.crawl_limit,
+            allow_external=args.crawl_allow_external,
+            quiet=args.quiet,
+        )
+
+    # FR-1.4 / FR-6.1: collect all URLs (positional + crawl + file), validate, deduplicate
+    # FR-6.4: crawl URLs appear after positional, before --file
     from botaudit.batch import collect_urls
-    urls = collect_urls(args.urls, file_path=args.file)
+    combined_positional = list(args.urls or []) + crawl_urls
+    urls = collect_urls(combined_positional, file_path=args.file)
 
-    # FR-1.6 / NFR-1.1: single URL = original code path
-    if len(urls) == 1 and args.file is None:
+    # FR-1.5 / FR-2.4: if crawl was sole source and yielded nothing, exit 2
+    if not urls:
+        print("Error: no valid URLs to audit.", file=sys.stderr)
+        sys.exit(2)
+
+    # FR-6.3 / NFR-1.1: single URL = original code path
+    if len(urls) == 1 and args.file is None and args.crawl is None:
         args.urls = urls
         _run_single(args)
     else:
-        _run_batch(args, urls)
+        _run_batch(args, urls, crawl_result=crawl_result)
 
 
 if __name__ == "__main__":

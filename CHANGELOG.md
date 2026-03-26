@@ -17,6 +17,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `-q`/`--quiet` flag to suppress progress messages
 - Batch-aware exit codes: `--fail-under` evaluates all successful URLs
 - Spec document: `docs/SPEC-batch.md`
+- Sitemap crawl mode: `--crawl <URL>` auto-discovers and audits pages from XML sitemaps
+- Sitemap discovery via `robots.txt` `Sitemap:` directives with `/sitemap.xml` fallback
+- Support for XML sitemaps (`<urlset>`), sitemap indexes (`<sitemapindex>`), and plain-text sitemaps
+- Recursive sitemap index parsing (depth-limited to 2, max 50 child sitemaps)
+- Origin-based scope filtering (default) with `--crawl-allow-external` override
+- `--crawl-limit`/`-l` flag to cap the number of crawl-discovered URLs
+- Crawl metadata in JSON output (`crawl` object with discovery stats)
+- Spec document: `docs/SPEC-crawl.md`
 
 ## [1.2.0] - 2026-03-21
 
