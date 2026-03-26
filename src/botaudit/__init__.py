@@ -7,6 +7,7 @@ NFR-3.2: No stdout/stderr output on import.
 
 from botaudit.api import audit, audit_batch
 from botaudit.batch import BatchResult, URLError, URLSuccess
+from botaudit.config import load_config
 from botaudit.fetcher import FetchError
 from botaudit.models import (
     CATEGORY_WEIGHTS,
@@ -25,6 +26,7 @@ __all__ = [
     # Functions
     "audit",
     "audit_batch",
+    "load_config",
     "resolve_weights",
     # Data classes
     "Report",

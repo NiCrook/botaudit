@@ -65,6 +65,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Public `__init__.py` exports with `__all__`: data classes, enums, exceptions, constants
 - `__version__` attribute (`"0.1.0"`) accessible via `from botaudit import __version__`
 - Spec document: `docs/SPEC-library-mode.md`
+- Configuration file support: `.botaudit.yaml` or `[tool.botaudit]` in `pyproject.toml` for persistent project-level settings
+- `--config PATH` flag to load an explicit config file, `--config none` to disable config discovery
+- Config file supports all existing CLI options: `format`, `timeout`, `fail_under`, `quiet`, `no_recommendations`, `skip_llm_discovery`, `weight_profile`, `weights`, `page_type`, `no_page_type`
+- CLI flags always take precedence over config file values; weight overrides are additive
+- `load_config()` function in public API for programmatic config file loading
+- Strict validation with descriptive errors for unknown keys, invalid values, and mutual exclusions (exit code 2)
+- `pyyaml` added as a dependency for YAML config support
+- Spec document: `docs/SPEC-config.md`
 
 ## [1.2.0] - 2026-03-21
 
