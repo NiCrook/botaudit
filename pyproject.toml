@@ -27,6 +27,7 @@ classifiers = [
 dependencies = [
     "httpx",
     "beautifulsoup4",
+    "pyyaml",
 ]
 
 [project.urls]

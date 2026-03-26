@@ -140,6 +140,15 @@ def build_parser() -> argparse.ArgumentParser:
         default=False,
         help="Include URLs from sitemaps that point to other origins",
     )
+
+    # Config file flags (SPEC-config)
+    parser.add_argument(
+        "--config",
+        default=None,
+        metavar="PATH",
+        dest="config",
+        help="Load config from PATH, or 'none' to disable config file discovery",
+    )
     return parser
 
 
@@ -284,15 +293,41 @@ def _run_batch(
 # Entry point
 # -----------------------------------------------------------------------
 
+def _detect_explicit_flags(parser: argparse.ArgumentParser, argv: list[str]) -> set[str]:
+    """Return the set of argparse dest names that were explicitly set on the CLI.
+
+    FR-3.5: Needed so config file booleans aren't overridden by argparse defaults.
+    """
+    explicit: set[str] = set()
+    # Parse known args to detect which flags were actually supplied
+    # We inspect the raw argv for flags that map to each action
+    for action in parser._actions:
+        if not action.option_strings:
+            continue  # positional
+        for opt in action.option_strings:
+            if opt in argv:
+                explicit.add(action.dest)
+                break
+    return explicit
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = build_parser()
-    args = parser.parse_args(argv)
+    raw_argv = argv if argv is not None else sys.argv[1:]
+    args = parser.parse_args(raw_argv)
 
     # SPEC-custom-weights FR-5: --list-profiles exits immediately
     if args.list_profiles:
         from botaudit.models import format_profiles
         print(format_profiles())
         return
+
+    # SPEC-config: load and merge configuration file
+    from botaudit.config import load_config_for_cli, merge_config_into_args
+
+    config = load_config_for_cli(args.config)
+    explicit = _detect_explicit_flags(parser, raw_argv)
+    merge_config_into_args(args, config, explicit_flags=explicit)
 
     # SPEC-custom-weights: resolve weights once at startup (NFR-2.1)
     from botaudit.models import resolve_weights
