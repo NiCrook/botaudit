@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-03-25
+
 ### Fixed
 - HTTPS connections failing on systems where certifi's CA bundle is incomplete (e.g., Python 3.14 on Windows); `truststore` now provides OS-native certificate verification with automatic fallback to certifi
 
@@ -102,7 +104,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `--timeout` flag for HTTP request timeout
 - PyPI packaging with `botaudit` entry point
 
-[Unreleased]: https://github.com/NiCrook/botaudit/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/NiCrook/botaudit/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/NiCrook/botaudit/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/NiCrook/botaudit/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/NiCrook/botaudit/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/NiCrook/botaudit/releases/tag/v1.0.0
