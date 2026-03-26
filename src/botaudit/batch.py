@@ -217,6 +217,7 @@ def audit_one(
     timeout: float,
     skip_llm_discovery: bool,
     no_recommendations: bool,
+    weights: dict[str, float] | None = None,
 ) -> URLResult:
     """Run the full single-URL pipeline and return a URLResult.
 
@@ -248,7 +249,7 @@ def audit_one(
             robots_txt, llms_txt, llms_full_txt
         )
 
-    report = grade(analysis, url)
+    report = grade(analysis, url, weights=weights)
     if not no_recommendations:
         report.categories = recommend(analysis, report.categories)
 
@@ -263,6 +264,7 @@ def run_batch(
     skip_llm_discovery: bool = False,
     no_recommendations: bool = False,
     quiet: bool = False,
+    weights: dict[str, float] | None = None,
 ) -> BatchResult:
     """Process all URLs sequentially and return aggregate results.
 
@@ -309,6 +311,7 @@ def run_batch(
                 timeout=timeout,
                 skip_llm_discovery=skip_llm_discovery,
                 no_recommendations=no_recommendations,
+                weights=weights,
             )
             results.append(result)
             if isinstance(result, URLError):
@@ -326,6 +329,7 @@ def format_batch_text(
     batch: BatchResult,
     *,
     show_recommendations: bool = True,
+    weights: dict[str, float] | None = None,
 ) -> str:
     """Format batch results as plain text with per-URL reports + summary table.
 
@@ -341,7 +345,7 @@ def format_batch_text(
     for result in batch.results:
         if isinstance(result, URLSuccess):
             sections.append(
-                format_report(result.report, show_recommendations=show_recommendations)
+                format_report(result.report, show_recommendations=show_recommendations, weights=weights)
             )
         else:
             # FR-5.3 / FR-6.6: error indicator in individual output
@@ -405,6 +409,7 @@ def format_batch_json(
     *,
     show_recommendations: bool = True,
     crawl_result: object | None = None,
+    weights: dict[str, float] | None = None,
 ) -> str:
     """Format batch results as JSON.
 
@@ -417,6 +422,8 @@ def format_batch_json(
     import json
 
     from botaudit.models import CATEGORY_WEIGHTS
+
+    effective = weights if weights is not None else CATEGORY_WEIGHTS
 
     result_items: list[dict] = []
     for result in batch.results:
@@ -432,7 +439,7 @@ def format_batch_json(
                 cat_entry: dict = {
                     "name": cat.name,
                     "score": cat.score,
-                    "weight": CATEGORY_WEIGHTS.get(cat.name, 0.0),
+                    "weight": effective.get(cat.name, 0.0),
                     "findings": cat.findings,
                 }
                 if show_recommendations and cat.recommendations:
@@ -469,6 +476,7 @@ def format_batch_csv(
     batch: BatchResult,
     *,
     show_recommendations: bool = True,
+    weights: dict[str, float] | None = None,
 ) -> str:
     """Format batch results as CSV.
 
@@ -481,6 +489,8 @@ def format_batch_csv(
     import io
 
     from botaudit.models import CATEGORY_WEIGHTS
+
+    effective = weights if weights is not None else CATEGORY_WEIGHTS
 
     buf = io.StringIO()
     writer = csv.writer(buf)
@@ -501,7 +511,7 @@ def format_batch_csv(
                     r.grade,
                     cat.name,
                     cat.score,
-                    CATEGORY_WEIGHTS.get(cat.name, 0.0),
+                    effective.get(cat.name, 0.0),
                     "; ".join(cat.findings),
                 ]
                 if show_recommendations:
@@ -530,6 +540,7 @@ def format_batch_html(
     *,
     show_recommendations: bool = True,
     crawl_result: object | None = None,
+    weights: dict[str, float] | None = None,
 ) -> str:
     """Format batch results as a self-contained HTML report.
 
@@ -623,7 +634,7 @@ def format_batch_html(
             for cat in r.categories:
                 parts.append(
                     _render_category_card(
-                        cat, show_recommendations=show_recommendations
+                        cat, show_recommendations=show_recommendations, weights=weights
                     )
                 )
             parts.append("</div>")

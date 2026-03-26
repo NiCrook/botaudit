@@ -80,6 +80,29 @@ def build_parser() -> argparse.ArgumentParser:
         help="Suppress progress messages in batch mode",
     )
 
+    # Custom weight flags (SPEC-custom-weights)
+    parser.add_argument(
+        "-w", "--weight",
+        action="append",
+        dest="weight_overrides",
+        default=None,
+        metavar="CATEGORY=VALUE",
+        help="Override weight for a category (repeatable). "
+             "Value is a decimal (0.30) or percentage (30%%)",
+    )
+    parser.add_argument(
+        "-W", "--weight-profile",
+        default=None,
+        metavar="PROFILE",
+        help="Use a named weight profile as the base weights",
+    )
+    parser.add_argument(
+        "--list-profiles",
+        action="store_true",
+        default=False,
+        help="List available weight profiles and exit",
+    )
+
     # Crawl mode flags (SPEC-crawl)
     parser.add_argument(
         "--crawl",
@@ -139,22 +162,22 @@ def _run_single(args: argparse.Namespace) -> None:
             robots_txt, llms_txt, llms_full_txt
         )
 
-    report = grade(analysis, url)
+    report = grade(analysis, url, weights=args.weights)
     show_recs = not args.no_recommendations
     if show_recs:
         report.categories = recommend(analysis, report.categories)
 
     if args.output_format == "json":
         from botaudit.report import format_json
-        print(format_json(report, show_recommendations=show_recs))
+        print(format_json(report, show_recommendations=show_recs, weights=args.weights))
     elif args.output_format == "csv":
         from botaudit.report import format_csv
-        print(format_csv(report, show_recommendations=show_recs))
+        print(format_csv(report, show_recommendations=show_recs, weights=args.weights))
     elif args.output_format == "html":
         from botaudit.report import format_html
-        print(format_html(report, show_recommendations=show_recs))
+        print(format_html(report, show_recommendations=show_recs, weights=args.weights))
     else:
-        print_report(report, show_recommendations=show_recs)
+        print_report(report, show_recommendations=show_recs, weights=args.weights)
 
     if args.fail_under is not None:
         from botaudit.models import GRADE_THRESHOLDS
@@ -188,6 +211,7 @@ def _run_batch(
         skip_llm_discovery=args.skip_llm_discovery,
         no_recommendations=args.no_recommendations,
         quiet=args.quiet,
+        weights=args.weights,
     )
 
     show_recs = not args.no_recommendations
@@ -197,17 +221,27 @@ def _run_batch(
             batch,
             show_recommendations=show_recs,
             crawl_result=crawl_result,
+            weights=args.weights,
         ))
     elif args.output_format == "csv":
-        print(format_batch_csv(batch, show_recommendations=show_recs))
+        print(format_batch_csv(
+            batch,
+            show_recommendations=show_recs,
+            weights=args.weights,
+        ))
     elif args.output_format == "html":
         print(format_batch_html(
             batch,
             show_recommendations=show_recs,
             crawl_result=crawl_result,
+            weights=args.weights,
         ))
     else:
-        print(format_batch_text(batch, show_recommendations=show_recs))
+        print(format_batch_text(
+            batch,
+            show_recommendations=show_recs,
+            weights=args.weights,
+        ))
 
     exit_code = determine_exit_code(batch, fail_under=args.fail_under)
     if exit_code != 0:
@@ -221,6 +255,25 @@ def _run_batch(
 def main(argv: list[str] | None = None) -> None:
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    # SPEC-custom-weights FR-5: --list-profiles exits immediately
+    if args.list_profiles:
+        from botaudit.models import format_profiles
+        print(format_profiles())
+        return
+
+    # SPEC-custom-weights: resolve weights once at startup (NFR-2.1)
+    from botaudit.models import resolve_weights
+    try:
+        weights = resolve_weights(
+            profile=args.weight_profile,
+            overrides=args.weight_overrides,
+        )
+    except ValueError as exc:
+        parser.error(str(exc))
+
+    # Attach resolved weights to args so _run_single/_run_batch can access them
+    args.weights = weights
 
     # FR-1.5: need at least one URL from positional, --file, or --crawl
     if not args.urls and args.file is None and args.crawl is None:

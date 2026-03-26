@@ -320,13 +320,20 @@ def score_llm_discovery(result: LLMDiscoverabilityResult) -> CategoryResult:
 # --- Overall grading (§4.2, §4.3, §4.4) ---
 
 
-def grade(analysis: AnalysisResult, url: str) -> Report:
+def grade(
+    analysis: AnalysisResult,
+    url: str,
+    *,
+    weights: dict[str, float] | None = None,
+) -> Report:
     """Build a graded Report from analysis results.
 
     §4.1 — scores each category (0–100).
     §4.2 — computes a weighted overall score.
     §4.3 — maps the overall score to a letter grade.
     §4.4 — applies category weights defined in models.CATEGORY_WEIGHTS.
+
+    SPEC-custom-weights: *weights* overrides default weights when provided.
     """
     categories = [
         score_content_availability(analysis.content_availability),
@@ -341,5 +348,5 @@ def grade(analysis: AnalysisResult, url: str) -> Report:
         categories.append(score_llm_discovery(analysis.llm_discovery))
 
     report = Report(url=url, categories=categories)
-    report.compute_grade()  # §4.2 + §4.3
+    report.compute_grade(weights=weights)  # §4.2 + §4.3
     return report
