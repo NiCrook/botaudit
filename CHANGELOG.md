@@ -58,6 +58,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `--no-page-type` flag to disable page-type detection entirely
 - Page type displayed in all output formats: text header, JSON `page_type` object with signals, CSV column, HTML badge
 - Spec document: `docs/SPEC-page-type-heuristics.md`
+- API / Library mode: public Python API via `from botaudit import audit`
+- `audit()` function for single-URL programmatic auditing (returns `Report`, raises `FetchError`)
+- `audit_batch()` function for multi-URL programmatic auditing (returns `BatchResult`)
+- `Report.to_dict()` and `BatchResult.to_dict()` for JSON-serializable output
+- Public `__init__.py` exports with `__all__`: data classes, enums, exceptions, constants
+- `__version__` attribute (`"0.1.0"`) accessible via `from botaudit import __version__`
+- Spec document: `docs/SPEC-library-mode.md`
 
 ## [1.2.0] - 2026-03-21
 
