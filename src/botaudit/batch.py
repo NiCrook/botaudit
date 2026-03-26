@@ -218,6 +218,7 @@ def audit_one(
     skip_llm_discovery: bool,
     no_recommendations: bool,
     weights: dict[str, float] | None = None,
+    page_type_mode: str = "auto",
 ) -> URLResult:
     """Run the full single-URL pipeline and return a URLResult.
 
@@ -253,8 +254,21 @@ def audit_one(
         )
 
     report = grade(analysis, url, weights=weights)
+
+    # SPEC-page-type-heuristics: detect page type and attach to report.
+    if page_type_mode != "disabled":
+        from botaudit.page_type import PageTypeResult, detect_page_type
+        if page_type_mode == "auto":
+            report.page_type = detect_page_type(analysis, url, html=html)
+        else:
+            report.page_type = PageTypeResult(
+                page_type=page_type_mode, confidence="override",
+            )
+
     if not no_recommendations:
-        report.categories = recommend(analysis, report.categories)
+        report.categories = recommend(
+            analysis, report.categories, page_type=report.page_type,
+        )
 
     return URLSuccess(url=url, report=report)
 
@@ -268,6 +282,7 @@ def run_batch(
     no_recommendations: bool = False,
     quiet: bool = False,
     weights: dict[str, float] | None = None,
+    page_type_mode: str = "auto",
 ) -> BatchResult:
     """Process all URLs sequentially and return aggregate results.
 
@@ -315,12 +330,34 @@ def run_batch(
                 skip_llm_discovery=skip_llm_discovery,
                 no_recommendations=no_recommendations,
                 weights=weights,
+                page_type_mode=page_type_mode,
             )
             results.append(result)
             if isinstance(result, URLError):
                 print(f"  Error: {result.message}", file=sys.stderr)
 
     return BatchResult(results=results)
+
+
+# ---------------------------------------------------------------------------
+# Page-type JSON helper (SPEC-page-type-heuristics FR-7.3)
+# ---------------------------------------------------------------------------
+
+def _page_type_json(pt: object) -> dict:
+    """Serialise a PageTypeResult to a JSON-friendly dict."""
+    return {
+        "type": pt.page_type,
+        "confidence": pt.confidence,
+        "signals": [
+            {
+                "source": s.source,
+                "type_vote": s.type_vote,
+                "weight": s.weight,
+                "detail": s.detail,
+            }
+            for s in pt.signals
+        ],
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -438,6 +475,9 @@ def format_batch_json(
                 "grade": r.grade,
                 "categories": [],
             }
+            # SPEC-page-type-heuristics FR-7.3
+            if r.page_type is not None:
+                entry["page_type"] = _page_type_json(r.page_type)
             for cat in r.categories:
                 cat_entry: dict = {
                     "name": cat.name,
@@ -498,8 +538,8 @@ def format_batch_csv(
     buf = io.StringIO()
     writer = csv.writer(buf)
 
-    # FR-8.4: single header row
-    header = ["url", "overall_score", "grade", "category", "score", "weight", "findings"]
+    # FR-8.4: single header row (SPEC-page-type-heuristics FR-7.7: page_type column)
+    header = ["url", "page_type", "overall_score", "grade", "category", "score", "weight", "findings"]
     if show_recommendations:
         header.append("recommendations")
     writer.writerow(header)
@@ -507,9 +547,11 @@ def format_batch_csv(
     for result in batch.results:
         if isinstance(result, URLSuccess):
             r = result.report
+            pt_str = r.page_type.page_type if r.page_type is not None else ""
             for cat in r.categories:
                 row: list = [
                     r.url,
+                    pt_str,
                     r.overall_score,
                     r.grade,
                     cat.name,
@@ -526,7 +568,7 @@ def format_batch_csv(
                 writer.writerow(row)
         else:
             # FR-8.3: single error row
-            row = [result.url, 0, "ERR", "error", 0, 0, result.message]
+            row = [result.url, "", 0, "ERR", "error", 0, 0, result.message]
             if show_recommendations:
                 row.append("")
             writer.writerow(row)
@@ -633,6 +675,14 @@ def format_batch_html(
                 f'({r.overall_score:.0f}/100)</summary>'
             )
             parts.append('<div class="detail-body">')
+            # SPEC-page-type-heuristics FR-7.8: page type badge
+            if r.page_type is not None and r.page_type.page_type != "generic":
+                pt = r.page_type
+                parts.append(
+                    f'<p class="page-type-badge">Page type: '
+                    f'<strong>{_esc(pt.page_type)}</strong> '
+                    f'({_esc(pt.confidence)} confidence)</p>'
+                )
             parts.append(_render_grade_badge(r.grade, r.overall_score))
             for cat in r.categories:
                 parts.append(

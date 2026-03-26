@@ -1,5 +1,7 @@
 """Data models for botaudit analysis results and grading."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -220,6 +222,7 @@ class Report:
     categories: list[CategoryResult]
     overall_score: float = 0.0
     grade: str = ""
+    page_type: object | None = None  # PageTypeResult when detection enabled
 
     def compute_grade(
         self, weights: dict[str, float] | None = None,
