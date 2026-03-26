@@ -522,6 +522,121 @@ def format_batch_csv(
 
 
 # ---------------------------------------------------------------------------
+# HTML batch formatter — SPEC-html-report FR-9.2
+# ---------------------------------------------------------------------------
+
+def format_batch_html(
+    batch: BatchResult,
+    *,
+    show_recommendations: bool = True,
+    crawl_result: object | None = None,
+) -> str:
+    """Format batch results as a self-contained HTML report.
+
+    FR-4.1–FR-4.6: Summary table + collapsible per-URL detail sections.
+    FR-5.1–FR-5.2: Crawl metadata when present.
+    """
+    from botaudit.report import (
+        _esc,
+        _grade_color,
+        _html_document,
+        _render_category_card,
+        _render_footer,
+        _render_grade_badge,
+        _score_color,
+    )
+
+    parts: list[str] = []
+
+    # Header (FR-4.1)
+    parts.append("<header>")
+    parts.append("<h1>BotAudit Batch Report</h1>")
+    parts.append(
+        f"<p>{batch.total} URLs audited &mdash; "
+        f"{batch.succeeded} succeeded, {batch.failed} failed</p>"
+    )
+    parts.append("</header>")
+
+    # Crawl metadata (FR-5.1 / FR-5.2)
+    if crawl_result is not None:
+        parts.append('<div class="crawl-meta">')
+        parts.append(f"<strong>Crawl:</strong> {_esc(crawl_result.origin)}<br>")
+        parts.append(
+            f"Sitemaps found: {crawl_result.sitemaps_found} · "
+            f"URLs discovered: {crawl_result.urls_discovered} · "
+            f"After filter: {crawl_result.urls_after_filter} · "
+            f"After limit: {crawl_result.urls_after_limit}"
+        )
+        parts.append("</div>")
+
+    # Summary table (FR-4.1, FR-4.2, FR-4.3)
+    parts.append('<div class="batch-summary">')
+    parts.append('<table class="summary-table" role="table">')
+    parts.append("<thead><tr>")
+    parts.append('<th data-sort="url">URL</th>')
+    parts.append('<th data-sort="grade">Grade</th>')
+    parts.append('<th data-sort="score">Score</th>')
+    parts.append("</tr></thead>")
+    parts.append("<tbody>")
+    for i, result in enumerate(batch.results):
+        if isinstance(result, URLSuccess):
+            r = result.report
+            color = _grade_color(r.grade)
+            parts.append(
+                f"<tr>"
+                f'<td><a href="#url-{i}">{_esc(result.url)}</a></td>'
+                f'<td data-value="{_esc(r.grade)}" style="color:{color};font-weight:700">{_esc(r.grade)}</td>'
+                f'<td data-value="{r.overall_score:.0f}">{r.overall_score:.0f}/100</td>'
+                f"</tr>"
+            )
+        else:
+            parts.append(
+                f'<tr class="err">'
+                f"<td>{_esc(result.url)}</td>"
+                f'<td data-value="ERR" class="err">ERR</td>'
+                f'<td data-value="-1">&mdash;</td>'
+                f"</tr>"
+            )
+    parts.append("</tbody>")
+    parts.append("</table>")
+    parts.append("</div>")
+
+    # Expand/Collapse controls (FR-4.6)
+    parts.append('<div class="controls">')
+    parts.append('<button id="expand-all">Expand All</button>')
+    parts.append('<button id="collapse-all">Collapse All</button>')
+    parts.append("</div>")
+
+    # Per-URL detail sections (FR-4.2, FR-4.4, FR-4.5)
+    for i, result in enumerate(batch.results):
+        if isinstance(result, URLSuccess):
+            r = result.report
+            color = _grade_color(r.grade)
+            parts.append(f'<details class="url-detail" id="url-{i}">')
+            parts.append(
+                f'<summary>{_esc(result.url)} — '
+                f'<span style="color:{color}">{_esc(r.grade)}</span> '
+                f'({r.overall_score:.0f}/100)</summary>'
+            )
+            parts.append('<div class="detail-body">')
+            parts.append(_render_grade_badge(r.grade, r.overall_score))
+            for cat in r.categories:
+                parts.append(
+                    _render_category_card(
+                        cat, show_recommendations=show_recommendations
+                    )
+                )
+            parts.append("</div>")
+            parts.append("</details>")
+
+    # Footer
+    parts.append(_render_footer())
+
+    title = f"BotAudit Report \u2014 Batch ({batch.total} URLs)"
+    return _html_document(title, "\n".join(parts))
+
+
+# ---------------------------------------------------------------------------
 # Exit code — FR-9
 # ---------------------------------------------------------------------------
 
