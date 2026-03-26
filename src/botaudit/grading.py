@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 from botaudit.analysis import (
+    SCHEMA_MIN_PROPERTIES,
     AnalysisResult,
     ContentAvailabilityResult,
     LinkDiscoverabilityResult,
@@ -127,31 +128,153 @@ def score_link_discoverability(result: LinkDiscoverabilityResult) -> CategoryRes
 
 
 def score_structured_data(result: StructuredDataResult) -> CategoryResult:
-    """Score Structured Data (§3.4).
+    """Score Structured Data (SPEC-structured-data-validation FR-4).
 
-    Points awarded for each format present:
-    JSON-LD (40), Open Graph (30), meta description (30).
+    Revised scoring:
+      JSON-LD present (10), parseable (5), @context (5), @type (5),
+        min properties (10)                                        = 35
+      OG present (10), required complete (10), recommended (5)     = 25
+      Meta description present (10), optimal length (5)            = 15
+      Twitter Cards present (5)                                    =  5
+      Microdata present (5)                                        =  5
+      Multiple formats bonus (15)                                  = 15
+                                                                   ----
+                                                                    100
     """
     findings: list[str] = []
     score = 0.0
 
+    # --- JSON-LD (35 pts) ---
     if result.has_json_ld:
-        score += 40.0
-        findings.append(f"JSON-LD present ({result.json_ld_count} block(s)).")
+        score += 10.0  # present
+
+        parseable = [b for b in result.json_ld_blocks if b.raw_valid]
+        unparseable = [b for b in result.json_ld_blocks if not b.raw_valid]
+
+        if result.json_ld_parseable_count > 0:
+            score += 5.0  # parseable
+
+        # Collect types across all valid blocks
+        typed_blocks = [b for b in parseable if b.type_value]
+        type_list = [b.type_value for b in typed_blocks]
+
+        if any(b.context_present for b in parseable):
+            score += 5.0  # @context
+
+        if typed_blocks:
+            score += 5.0  # @type present
+
+        # Min properties: at least one typed block has all recommended props
+        if any(
+            b.type_value and not b.properties_missing
+            for b in typed_blocks
+        ):
+            score += 10.0  # min properties satisfied
+
+        # FR-7.1 — Findings
+        if unparseable:
+            findings.append(
+                f"JSON-LD present ({result.json_ld_count} block(s)) "
+                f"but {len(unparseable)} failed to parse."
+            )
+        elif type_list:
+            findings.append(
+                f"JSON-LD present ({result.json_ld_count} block(s)): "
+                f"{', '.join(type_list)}."
+            )
+        else:
+            findings.append(f"JSON-LD present ({result.json_ld_count} block(s)).")
+
+        if not any(b.context_present for b in parseable) and parseable:
+            findings.append("JSON-LD block missing schema.org @context.")
+
+        for b in typed_blocks:
+            if b.properties_missing:
+                findings.append(
+                    f"{b.type_value} missing recommended properties: "
+                    f"{', '.join(b.properties_missing)}."
+                )
+            else:
+                if b.type_value in SCHEMA_MIN_PROPERTIES:
+                    findings.append(
+                        f"{b.type_value} has all recommended properties."
+                    )
     else:
         findings.append("No JSON-LD found.")
 
+    # --- Open Graph (25 pts) ---
     if result.has_open_graph:
-        score += 30.0
-        findings.append(f"Open Graph tags present ({len(result.open_graph_tags)}).")
+        score += 10.0  # present
+        n_tags = len(result.open_graph_tags)
+
+        if not result.og_required_missing:
+            score += 10.0  # all required present
+            findings.append(
+                f"Open Graph complete ({n_tags} tags): "
+                f"all required properties present."
+            )
+        else:
+            findings.append(
+                f"Open Graph present ({n_tags} tags) — "
+                f"missing required: {', '.join(result.og_required_missing)}."
+            )
+
+        if not result.og_recommended_missing:
+            score += 5.0  # all recommended present
     else:
         findings.append("No Open Graph tags found.")
 
+    # --- Meta description (15 pts) ---
     if result.has_meta_description:
-        score += 30.0
-        findings.append("Meta description present.")
+        score += 10.0  # present
+        length = result.meta_description_length
+        cls = result.meta_description_length_class
+
+        if cls == "optimal":
+            score += 5.0
+            findings.append(
+                f"Meta description present ({length} chars) — optimal length."
+            )
+        elif cls == "too_short":
+            findings.append(
+                f"Meta description present ({length} chars) — "
+                f"below recommended minimum of 50 characters."
+            )
+        else:  # too_long
+            findings.append(
+                f"Meta description present ({length} chars) — "
+                f"exceeds recommended maximum of 160 characters."
+            )
     else:
         findings.append("No meta description found.")
+
+    # --- Twitter Cards (5 pts) ---
+    if result.has_twitter_cards:
+        score += 5.0
+        findings.append(
+            f"Twitter Card tags present ({len(result.twitter_card_tags)} tags)."
+        )
+    else:
+        findings.append("No Twitter Card tags found.")
+
+    # --- Microdata (5 pts) ---
+    if result.has_microdata:
+        score += 5.0
+        findings.append(
+            f"Microdata present ({result.microdata_count} itemscope element(s))."
+        )
+    else:
+        findings.append("No microdata found.")
+
+    # --- Multiple formats bonus (15 pts) ---
+    format_count = sum([
+        result.json_ld_parseable_count > 0,
+        result.has_open_graph,
+        result.has_microdata,
+        result.has_twitter_cards,
+    ])
+    if format_count >= 2:
+        score += 15.0
 
     return CategoryResult(
         name="Structured Data", score=round(score, 1), findings=findings

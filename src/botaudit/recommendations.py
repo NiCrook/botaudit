@@ -161,11 +161,11 @@ def recommend_link_discoverability(
 
 
 def recommend_structured_data(result: StructuredDataResult) -> list[Recommendation]:
-    """§7.4.4 — Structured data recommendations."""
+    """§7.4.4 / SPEC-structured-data-validation FR-8 — Structured data recommendations."""
     recs: list[Recommendation] = []
     cat = "Structured Data"
 
-    # §7.4.4.1 — Missing JSON-LD
+    # FR-8.1 — Missing JSON-LD
     if not result.has_json_ld:
         recs.append(Recommendation(
             message=(
@@ -175,23 +175,105 @@ def recommend_structured_data(result: StructuredDataResult) -> list[Recommendati
             severity=Severity.HIGH,
             category=cat,
         ))
+    else:
+        # FR-8.2 — Unparseable JSON-LD
+        unparseable = [b for b in result.json_ld_blocks if not b.raw_valid]
+        if unparseable:
+            recs.append(Recommendation(
+                message=(
+                    f"{len(unparseable)} JSON-LD block(s) contain invalid JSON "
+                    f"— fix the syntax errors."
+                ),
+                severity=Severity.HIGH,
+                category=cat,
+            ))
 
-    # §7.4.4.2 — Missing Open Graph
+        # FR-8.3 — Missing @context
+        parseable = [b for b in result.json_ld_blocks if b.raw_valid]
+        if parseable and not any(b.context_present for b in parseable):
+            recs.append(Recommendation(
+                message=(
+                    'Add "@context": "https://schema.org" to JSON-LD blocks.'
+                ),
+                severity=Severity.MEDIUM,
+                category=cat,
+            ))
+
+        # FR-8.4 — Missing minimum recommended properties
+        for b in result.json_ld_blocks:
+            if b.raw_valid and b.type_value and b.properties_missing:
+                recs.append(Recommendation(
+                    message=(
+                        f"{b.type_value} is missing recommended properties: "
+                        f"{', '.join(b.properties_missing)}."
+                    ),
+                    severity=Severity.MEDIUM,
+                    category=cat,
+                ))
+
+    # FR-8.5 — Missing Open Graph
     if not result.has_open_graph:
         recs.append(Recommendation(
             message=(
-                "Add Open Graph meta tags: og:title, og:description, "
+                "Add Open Graph meta tags: og:title, og:type, "
                 "og:image, and og:url."
             ),
             severity=Severity.MEDIUM,
             category=cat,
         ))
+    # FR-8.6 — OG present but missing required properties
+    elif result.og_required_missing:
+        recs.append(Recommendation(
+            message=(
+                "Open Graph is missing required properties: "
+                f"{', '.join(result.og_required_missing)}."
+            ),
+            severity=Severity.MEDIUM,
+            category=cat,
+        ))
 
-    # §7.4.4.3 — Missing meta description
+    # FR-8.7 — Missing meta description
     if not result.has_meta_description:
         recs.append(Recommendation(
             message="Add a <meta name=\"description\"> tag.",
             severity=Severity.MEDIUM,
+            category=cat,
+        ))
+    # FR-8.8 — Sub-optimal meta description length
+    elif result.meta_description_length_class in ("too_short", "too_long"):
+        if result.meta_description_length_class == "too_short":
+            recs.append(Recommendation(
+                message=(
+                    f"Meta description is only {result.meta_description_length} characters "
+                    f"— aim for 50–160 characters."
+                ),
+                severity=Severity.LOW,
+                category=cat,
+            ))
+        else:
+            recs.append(Recommendation(
+                message=(
+                    f"Meta description is {result.meta_description_length} characters "
+                    f"— consider trimming to 160 characters or fewer."
+                ),
+                severity=Severity.LOW,
+                category=cat,
+            ))
+
+    # FR-8.9 — Fewer than 2 structured data formats
+    format_count = sum([
+        result.json_ld_parseable_count > 0,
+        result.has_open_graph,
+        result.has_microdata,
+        result.has_twitter_cards,
+    ])
+    if format_count < 2:
+        recs.append(Recommendation(
+            message=(
+                "Only one structured data format detected — adding a second format "
+                "(e.g., Open Graph, JSON-LD, or Twitter Cards) improves AI discoverability."
+            ),
+            severity=Severity.LOW,
             category=cat,
         ))
 
