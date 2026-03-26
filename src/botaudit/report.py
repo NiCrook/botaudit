@@ -37,6 +37,16 @@ def format_report(
     lines.append(SEPARATOR)
     lines.append("")
 
+    # SPEC-page-type-heuristics FR-7.2: page type in header
+    if report.page_type is not None:
+        pt = report.page_type
+        if pt.confidence == "override":
+            lines.append(f"  Page type: {pt.page_type} (manual override)")
+        elif pt.page_type == "generic":
+            lines.append("  Page type: generic")
+        else:
+            lines.append(f"  Page type: {pt.page_type} ({pt.confidence} confidence)")
+
     # Overall grade
     lines.append(
         f"  Overall Grade: {report.grade} ({report.overall_score:.0f}/100)"
@@ -73,12 +83,28 @@ def format_json(
 ) -> str:
     """Return *report* as a JSON string."""
     effective = weights if weights is not None else CATEGORY_WEIGHTS
-    data = {
+    data: dict = {
         "url": report.url,
         "overall_score": report.overall_score,
         "grade": report.grade,
         "categories": [],
     }
+    # SPEC-page-type-heuristics FR-7.3
+    if report.page_type is not None:
+        pt = report.page_type
+        data["page_type"] = {
+            "type": pt.page_type,
+            "confidence": pt.confidence,
+            "signals": [
+                {
+                    "source": s.source,
+                    "type_vote": s.type_vote,
+                    "weight": s.weight,
+                    "detail": s.detail,
+                }
+                for s in pt.signals
+            ],
+        }
     for cat in report.categories:
         entry = {
             "name": cat.name,
@@ -105,13 +131,16 @@ def format_csv(
     effective = weights if weights is not None else CATEGORY_WEIGHTS
     buf = io.StringIO()
     writer = csv.writer(buf)
-    header = ["url", "overall_score", "grade", "category", "score", "weight", "findings"]
+    # SPEC-page-type-heuristics FR-7.7: page_type column after url
+    header = ["url", "page_type", "overall_score", "grade", "category", "score", "weight", "findings"]
     if show_recommendations:
         header.append("recommendations")
     writer.writerow(header)
+    pt_str = report.page_type.page_type if report.page_type is not None else ""
     for cat in report.categories:
         row = [
             report.url,
+            pt_str,
             report.overall_score,
             report.grade,
             cat.name,
@@ -298,6 +327,11 @@ header .url{color:#6b7280;word-break:break-all}
 .severity-high{color:#ef4444}
 .severity-medium{color:#f97316}
 .severity-low{color:#3b82f6}
+.page-type-badge{
+  display:inline-block;background:#f0f9ff;border:1px solid #bae6fd;
+  border-radius:.375rem;padding:.25rem .75rem;font-size:.9rem;color:#0369a1;
+  margin-bottom:.5rem;
+}
 footer{text-align:center;color:#9ca3af;font-size:.85rem;margin-top:2rem;padding-top:1rem;border-top:1px solid #e5e7eb}
 
 /* Batch mode */
@@ -335,6 +369,7 @@ details.url-detail[open] summary::before{transform:rotate(90deg)}
   .controls button{background:#1f2937;border-color:#374151;color:#f3f4f6}
   .controls button:hover{background:#374151}
   .crawl-meta{background:#1e3a5f;border-color:#2563eb}
+  .page-type-badge{background:#1e3a5f;border-color:#2563eb;color:#93c5fd}
 }
 """
 
@@ -390,6 +425,14 @@ def format_html(
     parts.append(
         f'<p class="url"><a href="{_esc(report.url)}">{_esc(report.url)}</a></p>'
     )
+    # SPEC-page-type-heuristics FR-7.8: page type badge
+    if report.page_type is not None and report.page_type.page_type != "generic":
+        pt = report.page_type
+        parts.append(
+            f'<p class="page-type-badge">Page type: '
+            f'<strong>{_esc(pt.page_type)}</strong> '
+            f'({_esc(pt.confidence)} confidence)</p>'
+        )
     parts.append(_render_grade_badge(report.grade, report.overall_score))
     parts.append("</header>")
 

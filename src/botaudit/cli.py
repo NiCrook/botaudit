@@ -103,6 +103,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="List available weight profiles and exit",
     )
 
+    # Page-type heuristics flags (SPEC-page-type-heuristics)
+    parser.add_argument(
+        "--page-type",
+        default=None,
+        metavar="TYPE",
+        help="Force page type (auto, article, product, documentation, "
+             "listing, homepage, generic). Default: auto",
+    )
+    parser.add_argument(
+        "--no-page-type",
+        action="store_true",
+        default=False,
+        help="Disable page-type detection entirely",
+    )
+
     # Crawl mode flags (SPEC-crawl)
     parser.add_argument(
         "--crawl",
@@ -166,9 +181,22 @@ def _run_single(args: argparse.Namespace) -> None:
         )
 
     report = grade(analysis, url, weights=args.weights)
+
+    # SPEC-page-type-heuristics: detect page type and attach to report.
+    if args.page_type_mode != "disabled":
+        from botaudit.page_type import PageTypeResult, detect_page_type
+        if args.page_type_mode == "auto":
+            report.page_type = detect_page_type(analysis, url, html=html)
+        else:
+            report.page_type = PageTypeResult(
+                page_type=args.page_type_mode, confidence="override",
+            )
+
     show_recs = not args.no_recommendations
     if show_recs:
-        report.categories = recommend(analysis, report.categories)
+        report.categories = recommend(
+            analysis, report.categories, page_type=report.page_type,
+        )
 
     if args.output_format == "json":
         from botaudit.report import format_json
@@ -215,6 +243,7 @@ def _run_batch(
         no_recommendations=args.no_recommendations,
         quiet=args.quiet,
         weights=args.weights,
+        page_type_mode=args.page_type_mode,
     )
 
     show_recs = not args.no_recommendations
@@ -277,6 +306,24 @@ def main(argv: list[str] | None = None) -> None:
 
     # Attach resolved weights to args so _run_single/_run_batch can access them
     args.weights = weights
+
+    # SPEC-page-type-heuristics FR-5/FR-6: resolve page-type mode.
+    if args.no_page_type and args.page_type is not None:
+        parser.error("--no-page-type and --page-type are mutually exclusive")
+    if args.no_page_type:
+        args.page_type_mode = "disabled"
+    elif args.page_type is None or args.page_type.lower() == "auto":
+        args.page_type_mode = "auto"
+    else:
+        from botaudit.page_type import PAGE_TYPES
+        val = args.page_type.lower()
+        if val not in PAGE_TYPES:
+            valid = ", ".join(sorted(PAGE_TYPES))
+            parser.error(
+                f"Unknown page type '{args.page_type}'. "
+                f"Valid types: auto, {valid}"
+            )
+        args.page_type_mode = val
 
     # FR-1.5: need at least one URL from positional, --file, or --crawl
     if not args.urls and args.file is None and args.crawl is None:

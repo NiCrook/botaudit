@@ -329,8 +329,8 @@ class TestFormatBatchCsv(unittest.TestCase):
         self.assertEqual(len(rows), 2)
         data_row = rows[1]
         self.assertEqual(data_row[0], "https://a.com")  # url
-        self.assertEqual(data_row[2], "A")  # grade
-        self.assertEqual(data_row[3], "Content Availability")  # category
+        self.assertEqual(data_row[3], "A")  # grade (shifted by page_type column)
+        self.assertEqual(data_row[4], "Content Availability")  # category
 
     def test_error_row_format(self):
         """FR-8.3: Failed URL gets single error row."""
@@ -342,9 +342,9 @@ class TestFormatBatchCsv(unittest.TestCase):
         self.assertEqual(len(rows), 2)
         data_row = rows[1]
         self.assertEqual(data_row[0], "https://fail.com")
-        self.assertEqual(data_row[2], "ERR")  # grade
-        self.assertEqual(data_row[3], "error")  # category
-        self.assertIn("Connection refused", data_row[6])  # findings
+        self.assertEqual(data_row[3], "ERR")  # grade (shifted by page_type column)
+        self.assertEqual(data_row[4], "error")  # category
+        self.assertIn("Connection refused", data_row[7])  # findings
 
 
 # ===========================================================================

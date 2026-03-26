@@ -51,6 +51,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Multi-format bonus scoring (15 pts for 2+ structured data formats)
 - Revised Structured Data scoring from binary presence to granular quality signals
 - Spec document: `docs/SPEC-structured-data-validation.md`
+- Per-page type heuristics: auto-detect page type (article, product, documentation, listing, homepage) from JSON-LD, og:type, URL patterns, and HTML structure signals
+- Vote-based classification with confidence levels (high, medium, low)
+- Type-aware recommendations: targeted advice based on detected page type (e.g., "add Article schema" for blog posts, "add Product schema" for product pages)
+- `--page-type` flag to force a specific page type, bypassing heuristic detection
+- `--no-page-type` flag to disable page-type detection entirely
+- Page type displayed in all output formats: text header, JSON `page_type` object with signals, CSV column, HTML badge
+- Spec document: `docs/SPEC-page-type-heuristics.md`
 
 ## [1.2.0] - 2026-03-21
 

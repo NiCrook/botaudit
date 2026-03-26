@@ -4,6 +4,7 @@
 7.3  Order by severity (high → medium → low).
 7.4  Per-category recommendation rules.
 7.5  One pure function per category, extensible without modifying core logic.
+SPEC-page-type-heuristics FR-4: Type-aware recommendations.
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ from botaudit.models import (
     Recommendation,
     Severity,
 )
+from botaudit.page_type import PageTypeResult
 
 # §7.4.1.3 — Suggested contexts for absent semantic elements.
 _SEMANTIC_SUGGESTIONS: dict[str, str] = {
@@ -479,6 +481,315 @@ def recommend_llm_discovery(
     return recs
 
 
+# ---------------------------------------------------------------------------
+# Type-aware recommendations (SPEC-page-type-heuristics FR-4)
+# ---------------------------------------------------------------------------
+
+# FR-4.6: Constant data structure for type-aware recommendation triggers.
+# Each entry: (category_name, trigger_fn, message, severity)
+# trigger_fn receives AnalysisResult and returns bool.
+
+_ARTICLE_SCHEMA_TYPES = {"Article", "NewsArticle", "BlogPosting"}
+
+
+def _type_recommend_article(
+    analysis: AnalysisResult,
+) -> list[Recommendation]:
+    """FR-4.3 — Type-aware recommendations for article pages."""
+    recs: list[Recommendation] = []
+    sd = analysis.structured_data
+
+    jsonld_types = {
+        b.type_value for b in sd.json_ld_blocks if b.raw_valid and b.type_value
+    }
+    has_article_schema = bool(jsonld_types & _ARTICLE_SCHEMA_TYPES)
+
+    if not has_article_schema:
+        recs.append(Recommendation(
+            message=(
+                "[article] Add Article schema with headline, author, and "
+                "datePublished for AI citation and search features"
+            ),
+            severity=Severity.HIGH,
+            category="Structured Data",
+        ))
+    else:
+        for block in sd.json_ld_blocks:
+            if block.type_value not in _ARTICLE_SCHEMA_TYPES:
+                continue
+            if "datePublished" in block.properties_missing:
+                recs.append(Recommendation(
+                    message=(
+                        "[article] Add datePublished to Article schema — AI "
+                        "systems use publication date for recency and "
+                        "relevance ranking"
+                    ),
+                    severity=Severity.MEDIUM,
+                    category="Structured Data",
+                ))
+            if "author" in block.properties_missing:
+                recs.append(Recommendation(
+                    message=(
+                        "[article] Add author to Article schema — AI "
+                        "assistants use authorship for source attribution"
+                    ),
+                    severity=Severity.MEDIUM,
+                    category="Structured Data",
+                ))
+            break  # only check first article-type block
+
+    if "article" not in analysis.semantic_html.semantic_breakdown:
+        recs.append(Recommendation(
+            message=(
+                "[article] Wrap the main content in an <article> element to "
+                "help AI parsers identify the primary content"
+            ),
+            severity=Severity.MEDIUM,
+            category="Semantic HTML",
+        ))
+
+    if "og:type" in sd.og_required_missing:
+        recs.append(Recommendation(
+            message=(
+                "[article] Set og:type to article for consistent page-type "
+                "signaling across AI and social platforms"
+            ),
+            severity=Severity.LOW,
+            category="Structured Data",
+        ))
+
+    return recs
+
+
+def _type_recommend_product(
+    analysis: AnalysisResult,
+) -> list[Recommendation]:
+    """FR-4.3 — Type-aware recommendations for product pages."""
+    recs: list[Recommendation] = []
+    sd = analysis.structured_data
+
+    jsonld_types = {
+        b.type_value for b in sd.json_ld_blocks if b.raw_valid and b.type_value
+    }
+    has_product = "Product" in jsonld_types
+
+    if not has_product:
+        recs.append(Recommendation(
+            message=(
+                "[product] Add Product schema with name, description, and "
+                "pricing for AI shopping assistants and rich search results"
+            ),
+            severity=Severity.HIGH,
+            category="Structured Data",
+        ))
+    else:
+        for block in sd.json_ld_blocks:
+            if block.type_value != "Product":
+                continue
+            if "description" in block.properties_missing:
+                recs.append(Recommendation(
+                    message=(
+                        "[product] Add description to Product schema — AI "
+                        "comparison tools rely on structured product "
+                        "descriptions"
+                    ),
+                    severity=Severity.MEDIUM,
+                    category="Structured Data",
+                ))
+            break
+
+        has_offer_with_price = any(
+            b.type_value == "Offer" and "price" not in b.properties_missing
+            for b in sd.json_ld_blocks
+            if b.raw_valid
+        )
+        if not has_offer_with_price:
+            recs.append(Recommendation(
+                message=(
+                    "[product] Add an Offer with price and priceCurrency to "
+                    "Product schema for AI price comparison"
+                ),
+                severity=Severity.MEDIUM,
+                category="Structured Data",
+            ))
+
+    if not sd.has_meta_description or sd.meta_description_length_class == "too_short":
+        recs.append(Recommendation(
+            message=(
+                "[product] Add a descriptive meta description summarizing "
+                "the product — AI assistants use this as a product summary"
+            ),
+            severity=Severity.MEDIUM,
+            category="Structured Data",
+        ))
+
+    return recs
+
+
+def _type_recommend_documentation(
+    analysis: AnalysisResult,
+) -> list[Recommendation]:
+    """FR-4.3 — Type-aware recommendations for documentation pages."""
+    recs: list[Recommendation] = []
+
+    if analysis.content_availability.word_count < 200:
+        recs.append(Recommendation(
+            message=(
+                "[documentation] Documentation pages should render "
+                "substantive content server-side — AI systems cannot "
+                "execute JavaScript to reveal hidden content"
+            ),
+            severity=Severity.HIGH,
+            category="Content Availability",
+        ))
+
+    ld = analysis.link_discoverability
+    if ld.total_links > 0 and ld.navigable_ratio < 0.8:
+        recs.append(Recommendation(
+            message=(
+                "[documentation] Documentation pages depend on strong "
+                "navigation — ensure all links use real URLs, not "
+                "JavaScript handlers"
+            ),
+            severity=Severity.MEDIUM,
+            category="Link Discoverability",
+        ))
+
+    if "nav" not in analysis.semantic_html.semantic_breakdown:
+        recs.append(Recommendation(
+            message=(
+                "[documentation] Add a <nav> element for documentation "
+                "navigation — AI crawlers use it to discover related pages"
+            ),
+            severity=Severity.MEDIUM,
+            category="Semantic HTML",
+        ))
+
+    jsonld_types = {
+        b.type_value for b in analysis.structured_data.json_ld_blocks
+        if b.raw_valid and b.type_value
+    }
+    if "HowTo" not in jsonld_types and "Course" not in jsonld_types:
+        recs.append(Recommendation(
+            message=(
+                "[documentation] Consider adding HowTo schema for "
+                "tutorial/guide content to enable AI step-by-step "
+                "presentation"
+            ),
+            severity=Severity.LOW,
+            category="Structured Data",
+        ))
+
+    return recs
+
+
+def _type_recommend_homepage(
+    analysis: AnalysisResult,
+) -> list[Recommendation]:
+    """FR-4.3 — Type-aware recommendations for homepage pages."""
+    recs: list[Recommendation] = []
+
+    jsonld_types = {
+        b.type_value for b in analysis.structured_data.json_ld_blocks
+        if b.raw_valid and b.type_value
+    }
+    if "WebSite" not in jsonld_types and "Organization" not in jsonld_types:
+        recs.append(Recommendation(
+            message=(
+                "[homepage] Add WebSite or Organization schema to the "
+                "homepage — AI systems use this to understand site identity "
+                "and purpose"
+            ),
+            severity=Severity.MEDIUM,
+            category="Structured Data",
+        ))
+
+    if not analysis.metadata.has_canonical:
+        recs.append(Recommendation(
+            message=(
+                "[homepage] Homepages should have a canonical URL to prevent "
+                "AI systems from indexing duplicate versions"
+            ),
+            severity=Severity.MEDIUM,
+            category="Metadata & Discoverability",
+        ))
+
+    if not analysis.metadata.has_sitemap_ref:
+        recs.append(Recommendation(
+            message=(
+                "[homepage] Add a <link rel=\"sitemap\"> to the homepage — "
+                "AI crawlers use it as the primary entry point for site "
+                "discovery"
+            ),
+            severity=Severity.MEDIUM,
+            category="Metadata & Discoverability",
+        ))
+
+    return recs
+
+
+def _type_recommend_listing(
+    analysis: AnalysisResult,
+) -> list[Recommendation]:
+    """FR-4.3 — Type-aware recommendations for listing pages."""
+    recs: list[Recommendation] = []
+
+    jsonld_types = {
+        b.type_value for b in analysis.structured_data.json_ld_blocks
+        if b.raw_valid and b.type_value
+    }
+    if "ItemList" not in jsonld_types and "CollectionPage" not in jsonld_types:
+        recs.append(Recommendation(
+            message=(
+                "[listing] Add ItemList schema to listing pages — AI "
+                "systems use it to understand page structure and item "
+                "relationships"
+            ),
+            severity=Severity.MEDIUM,
+            category="Structured Data",
+        ))
+
+    ld = analysis.link_discoverability
+    if ld.total_links > 0 and ld.navigable_ratio < 0.7:
+        recs.append(Recommendation(
+            message=(
+                "[listing] Listing pages are navigation-heavy — ensure "
+                "category and item links use real URLs for AI "
+                "discoverability"
+            ),
+            severity=Severity.MEDIUM,
+            category="Link Discoverability",
+        ))
+
+    return recs
+
+
+# Dispatch: page_type → recommender.
+_TYPE_RECOMMENDERS: dict[str, object] = {
+    "article": _type_recommend_article,
+    "product": _type_recommend_product,
+    "documentation": _type_recommend_documentation,
+    "homepage": _type_recommend_homepage,
+    "listing": _type_recommend_listing,
+}
+
+
+def _get_type_aware_recommendations(
+    analysis: AnalysisResult,
+    category_name: str,
+    page_type: str,
+) -> list[Recommendation]:
+    """Return type-aware recommendations for *category_name* given *page_type*.
+
+    FR-4.2: Only returns recs whose ``category`` matches *category_name*.
+    """
+    recommender = _TYPE_RECOMMENDERS.get(page_type)
+    if recommender is None:
+        return []
+    all_recs = recommender(analysis)
+    return [r for r in all_recs if r.category == category_name]
+
+
 # --- Recommender dispatch table (§7.5.2) ---
 
 _RECOMMENDERS = {
@@ -507,14 +818,26 @@ _SEVERITY_ORDER = {Severity.HIGH: 0, Severity.MEDIUM: 1, Severity.LOW: 2}
 
 
 def recommend(
-    analysis: AnalysisResult, categories: list[CategoryResult]
+    analysis: AnalysisResult,
+    categories: list[CategoryResult],
+    *,
+    page_type: PageTypeResult | None = None,
 ) -> list[CategoryResult]:
     """§7.1 — Return new CategoryResults with recommendations attached.
 
     Categories scoring below threshold receive recommendations sorted
     by severity (§7.3.1).  Categories at or above threshold are returned
     unchanged.
+
+    SPEC-page-type-heuristics FR-4: When *page_type* is provided and
+    non-generic, type-aware recommendations are appended.
     """
+    pt_name = (
+        page_type.page_type
+        if page_type is not None and page_type.page_type != "generic"
+        else None
+    )
+
     result: list[CategoryResult] = []
     for cat in categories:
         # §7.1.2 — Skip categories scoring 90+
@@ -523,11 +846,14 @@ def recommend(
             continue
 
         recommender = _RECOMMENDERS.get(cat.name)
-        if recommender is None:
-            result.append(cat)
-            continue
+        recs = recommender(analysis) if recommender is not None else []
 
-        recs = recommender(analysis)
+        # FR-4.1 / FR-4.4: Append type-aware recs for this category.
+        if pt_name is not None:
+            recs.extend(
+                _get_type_aware_recommendations(analysis, cat.name, pt_name)
+            )
+
         # §7.3.1 — Sort by severity
         recs.sort(key=lambda r: _SEVERITY_ORDER.get(r.severity, 99))
         result.append(
