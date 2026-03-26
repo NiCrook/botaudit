@@ -25,6 +25,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `--crawl-limit`/`-l` flag to cap the number of crawl-discovered URLs
 - Crawl metadata in JSON output (`crawl` object with discovery stats)
 - Spec document: `docs/SPEC-crawl.md`
+- HTML report output: `--format html` generates a self-contained, shareable HTML document
+- Grade color coding (A green, B blue, C yellow, D orange, F red) in HTML reports
+- Light and dark mode support via `prefers-color-scheme` media query
+- Responsive layout (375px–1920px) with system font stack
+- Batch HTML reports with sortable summary table and collapsible per-URL detail sections
+- Expand All / Collapse All controls in batch HTML reports
+- Crawl metadata display in batch HTML reports when `--crawl` is used
+- XSS prevention via HTML escaping of all user-supplied content
+- Spec document: `docs/SPEC-html-report.md`
 
 ## [1.2.0] - 2026-03-21
 

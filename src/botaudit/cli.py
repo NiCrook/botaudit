@@ -61,7 +61,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--format",
-        choices=["text", "json", "csv"],
+        choices=["text", "json", "csv", "html"],
         default="text",
         dest="output_format",
         help="Output format (default: text)",
@@ -150,6 +150,9 @@ def _run_single(args: argparse.Namespace) -> None:
     elif args.output_format == "csv":
         from botaudit.report import format_csv
         print(format_csv(report, show_recommendations=show_recs))
+    elif args.output_format == "html":
+        from botaudit.report import format_html
+        print(format_html(report, show_recommendations=show_recs))
     else:
         print_report(report, show_recommendations=show_recs)
 
@@ -173,6 +176,7 @@ def _run_batch(
     from botaudit.batch import (
         determine_exit_code,
         format_batch_csv,
+        format_batch_html,
         format_batch_json,
         format_batch_text,
         run_batch,
@@ -196,6 +200,12 @@ def _run_batch(
         ))
     elif args.output_format == "csv":
         print(format_batch_csv(batch, show_recommendations=show_recs))
+    elif args.output_format == "html":
+        print(format_batch_html(
+            batch,
+            show_recommendations=show_recs,
+            crawl_result=crawl_result,
+        ))
     else:
         print(format_batch_text(batch, show_recommendations=show_recs))
 
