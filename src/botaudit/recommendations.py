@@ -353,6 +353,47 @@ def recommend_llm_discovery(
                 )
             )
 
+    # SPEC-ai-metadata FR-7.1 — No ai.txt (LOW)
+    if not result.ai_metadata.ai_txt.present:
+        recs.append(
+            Recommendation(
+                message="Create a /ai.txt file declaring AI interaction policies.",
+                severity=Severity.LOW,
+                category=cat,
+            )
+        )
+
+    # SPEC-ai-metadata FR-7.2 — No ai-plugin.json or agent.json (LOW)
+    plugin = result.ai_metadata.ai_plugin_json
+    agent = result.ai_metadata.agent_json
+    if not plugin.present and not agent.present:
+        recs.append(
+            Recommendation(
+                message=(
+                    "Create a /.well-known/ai-plugin.json manifest "
+                    "to enable AI assistant discovery."
+                ),
+                severity=Severity.LOW,
+                category=cat,
+            )
+        )
+
+    # SPEC-ai-metadata FR-7.3 — ai-plugin.json present but invalid (LOW)
+    if plugin.present and not plugin.valid:
+        from botaudit.llm_discoverability import AI_PLUGIN_REQUIRED_FIELDS
+
+        recs.append(
+            Recommendation(
+                message=(
+                    "ai-plugin.json is missing required fields. "
+                    f"Ensure these are present and non-empty: "
+                    f"{', '.join(AI_PLUGIN_REQUIRED_FIELDS)}."
+                ),
+                severity=Severity.LOW,
+                category=cat,
+            )
+        )
+
     return recs
 
 
