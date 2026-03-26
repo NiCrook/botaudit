@@ -404,6 +404,7 @@ def format_batch_json(
     batch: BatchResult,
     *,
     show_recommendations: bool = True,
+    crawl_result: object | None = None,
 ) -> str:
     """Format batch results as JSON.
 
@@ -411,6 +412,7 @@ def format_batch_json(
     FR-7.2: Each result is success or error object.
     FR-7.3: Success objects match single-URL JSON structure.
     FR-7.4: Error objects have url, error: true, message.
+    SPEC-crawl FR-7.2: Include crawl metadata when present.
     """
     import json
 
@@ -447,13 +449,19 @@ def format_batch_json(
                 "message": result.message,
             })
 
-    data = {
+    data: dict = {
         "batch": True,
         "total": batch.total,
         "succeeded": batch.succeeded,
         "failed": batch.failed,
         "results": result_items,
     }
+
+    # SPEC-crawl FR-7.2: include crawl metadata when present
+    if crawl_result is not None:
+        from dataclasses import asdict
+        data["crawl"] = asdict(crawl_result)
+
     return json.dumps(data, indent=2)
 
 
