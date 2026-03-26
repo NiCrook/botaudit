@@ -60,6 +60,30 @@ class BatchResult:
         """Number of URLs that failed."""
         return sum(1 for r in self.results if isinstance(r, URLError))
 
+    def to_dict(self, *, weights: dict[str, float] | None = None) -> dict:
+        """Return a JSON-serializable dict of this batch result.
+
+        SPEC-library-mode FR-10.1–FR-10.3.
+        """
+        result_items: list[dict] = []
+        for result in self.results:
+            if isinstance(result, URLSuccess):
+                result_items.append(result.report.to_dict(weights=weights))
+            else:
+                result_items.append({
+                    "url": result.url,
+                    "error": True,
+                    "message": result.message,
+                })
+
+        return {
+            "batch": True,
+            "total": self.total,
+            "succeeded": self.succeeded,
+            "failed": self.failed,
+            "results": result_items,
+        }
+
 
 # ---------------------------------------------------------------------------
 # Input parsing — FR-1, FR-2, FR-3

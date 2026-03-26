@@ -224,6 +224,55 @@ class Report:
     grade: str = ""
     page_type: object | None = None  # PageTypeResult when detection enabled
 
+    def to_dict(self, *, weights: dict[str, float] | None = None) -> dict:
+        """Return a JSON-serializable dict of this report.
+
+        SPEC-library-mode FR-9.1–FR-9.4.
+        """
+        effective = weights if weights is not None else CATEGORY_WEIGHTS
+
+        data: dict = {
+            "url": self.url,
+            "overall_score": self.overall_score,
+            "grade": self.grade,
+        }
+
+        # FR-9.3: include page_type only when present
+        if self.page_type is not None:
+            pt = self.page_type
+            data["page_type"] = {
+                "type": pt.page_type,
+                "confidence": pt.confidence,
+                "signals": [
+                    {
+                        "source": s.source,
+                        "type_vote": s.type_vote,
+                        "weight": s.weight,
+                        "detail": s.detail,
+                    }
+                    for s in pt.signals
+                ],
+            }
+
+        cats: list[dict] = []
+        for cat in self.categories:
+            cat_entry: dict = {
+                "name": cat.name,
+                "score": cat.score,
+                "weight": effective.get(cat.name, 0.0),
+                "findings": cat.findings,
+            }
+            # FR-9.4: omit recommendations when empty
+            if cat.recommendations:
+                cat_entry["recommendations"] = [
+                    {"message": rec.message, "severity": rec.severity.value}
+                    for rec in cat.recommendations
+                ]
+            cats.append(cat_entry)
+
+        data["categories"] = cats
+        return data
+
     def compute_grade(
         self, weights: dict[str, float] | None = None,
     ) -> None:
